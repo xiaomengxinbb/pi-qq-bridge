@@ -24,47 +24,23 @@ import {
 import { buildCommandKeyboard, type QQCommandButton } from "./qq-keyboard.ts";
 import type { QQAccessRequestStore } from "./access-requests.ts";
 import {
-	AttachmentPipeline,
+	type AttachmentPipeline,
 	formatAttachmentFailures,
 	hasUsableAgentInput,
 } from "./attachment-pipeline.ts";
+import { type WorkspaceRegistry, WorkspaceError } from "./workspace-registry.ts";
 import type { QQInboundMessage, QQReplyTarget } from "./types.ts";
-import type { QQRunResult, QQSessionInfo } from "./qq-session.ts";
-
-/** 会话结构接口（注入 fake 便于单测；QQAgentSession 结构兼容） */
-export interface QQSessionLike {
-	run(prompt: string, observer?: unknown): Promise<QQRunResult>;
-	isStreaming(): boolean;
-	dispose(): Promise<void>;
-	currentModel():
-		| {
-				provider: string;
-				id: string;
-				name: string;
-				input: string[];
-				reasoning: boolean;
-		  }
-		| undefined;
-	availableModels(): Promise<QQModelInfo[]>;
-	setModel(provider: string, modelId: string): Promise<QQModelInfo>;
-	thinkingLevel(): string;
-	availableThinkingLevels(): string[];
-	setThinkingLevel(level: string): string;
-	newSession(name?: string): Promise<{ id: string; name?: string }>;
-	listSessions(): Promise<QQSessionInfo[]>;
-	resumeSession(path: string): Promise<{ id: string; name?: string }>;
-	setSessionName(name: string): string;
-	sessionId(): string;
-	sessionName(): string | undefined;
-	compact(instructions?: string): Promise<{ tokensBefore?: number }>;
-	abort(): Promise<void>;
-}
+import type { QQRunResult, QQSessionInfo, QQSessionLike } from "./qq-session.ts";
 
 /** 注册表结构接口（ConversationRegistry 结构兼容） */
 export interface ConversationRegistryLike {
 	get(msg: QQInboundMessage): Promise<QQSessionLike>;
 	peek(msg: QQInboundMessage): QQSessionLike | undefined;
 	dispose(): Promise<void>;
+	/** M5：当前 workspace（/workspace 展示用） */
+	readonly currentWorkspace?: { name: string; path: string };
+	/** M5：切换 workspace（旧会话全部 dispose，新会话以新 cwd 创建） */
+	setWorkspace?(name: string, path: string): Promise<void>;
 }
 
 /** 路由事件（M7 TUI 视图消费；测试可断言） */
@@ -84,6 +60,8 @@ export interface QQRouterOptions {
 	dedupeTtlMs?: number;
 	/** 附件预处理管线（M3；不传则附件消息按无附件处理） */
 	attachmentPipeline?: AttachmentPipeline;
+	/** Workspace 注册表（M5；不传则 /workspace 提示不可用） */
+	workspaceRegistry?: WorkspaceRegistry;
 	/** 访问申请存储（未授权私聊入口；不传则直接拒绝） */
 	accessRequests?: QQAccessRequestStore;
 	/** 命令状态机（selection/confirmation） */
@@ -114,6 +92,7 @@ export class QQRouter {
 	private readonly onEvent?: (event: QQRouterEvent) => void;
 	private readonly statusProvider?: () => string;
 	private readonly attachmentPipeline?: AttachmentPipeline;
+	private readonly workspaceRegistry?: WorkspaceRegistry;
 	private readonly recentInbound: LastEntry[] = [];
 	private readonly recentOutbound: LastEntry[] = [];
 
@@ -141,6 +120,7 @@ export class QQRouter {
 		this.onEvent = options.onEvent;
 		this.statusProvider = options.statusProvider;
 		this.attachmentPipeline = options.attachmentPipeline;
+		this.workspaceRegistry = options.workspaceRegistry;
 	}
 
 	// ── 入站入口 ───────────────────────────────────────────────────
@@ -323,11 +303,7 @@ export class QQRouter {
 				await this.handleStopCommand(msg);
 				return;
 			case "workspace":
-				// M5 实现；白名单先行，避免误报未知命令
-				await this.replyToQQ(
-					msg,
-					"## 命令即将上线\n\n`/workspace` 将在后续版本提供，当前 QQ 侧不可用。",
-				);
+				await this.handleWorkspaceCommand(msg, command.args);
 				return;
 			default:
 				await this.replyToQQ(
@@ -629,6 +605,48 @@ export class QQRouter {
 			aborted || removed > 0
 				? `## 已停止 QQ 任务\n\n${aborted ? "当前生成已中止。" : ""}${removed > 0 ? ` 已移除 ${removed} 条待处理消息。` : ""}\n\nQQ 会话历史已保留。`
 				: "当前 QQ 会话没有正在执行或等待的任务。",
+		);
+	}
+
+	private async handleWorkspaceCommand(msg: QQInboundMessage, args: string[]): Promise<void> {
+		const registry = this.workspaceRegistry;
+		if (!registry) {
+			await this.replyToQQ(msg, "## 工作区不可用\n\n当前未配置 workspaces（配置文件中添加 workspaces 数组）。");
+			return;
+		}
+		const conversation = this.registry;
+		// /workspace → 列出
+		if (args.length === 0) {
+			const current = conversation.currentWorkspace;
+			const lines = [
+				"## 工作区",
+				"",
+				`当前：**${current?.name ?? "default"}**（${current?.path ?? "?"}）`,
+				"",
+				...registry.list().map((w) => `- \`${w.name}\`  ${w.path}${w.description ? `（${w.description}）` : ""}`),
+				"",
+				"发送 /workspace <名称> 切换（需要管理员权限）。",
+			];
+			await this.replyToQQ(msg, lines.join("\n"), this.helpKeyboard(msg));
+			return;
+		}
+		// /workspace add <name> <path> / remove <name>：管理命令（QQ 侧 admin）
+		if (args[0] === "add" || args[0] === "remove") {
+			await this.replyToQQ(msg, "## 命令未执行\n\n`/workspace add|remove` 请在主机终端执行（本地管理员操作）。");
+			return;
+		}
+		// /workspace <name> → 切换（mutating，已由授权矩阵校验 admin）
+		const name = args[0]!;
+		const resolved = registry.resolve(name);
+		if (conversation.currentWorkspace?.name === name) {
+			await this.replyToQQ(msg, `## 工作区\n\n已在 **${name}**（${resolved.path}）。`);
+			return;
+		}
+		await conversation.setWorkspace?.(resolved.name, resolved.path);
+		await this.replyToQQ(
+			msg,
+			`## 已切换工作区\n\n- 工作区：**${resolved.name}**\n- 路径：\`${resolved.path}\`\n- 会话已重置到该目录，直接发送任务即可。`,
+			this.helpKeyboard(msg),
 		);
 	}
 

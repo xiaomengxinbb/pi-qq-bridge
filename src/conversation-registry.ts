@@ -1,23 +1,31 @@
 /**
- * 会话注册表（spec §6.5）
+ * 会话注册表（spec §6.5 + M5 workspace 维度）
  * - key = 私聊 user_openid / 群 group_openid
  * - 懒创建 + idleDisposeMs 回收 + maxResident 上限
- * - sessionDir = sha256("pi-qq-bridge\0"+key) 前 32 位，QQ 专属目录
+ * - sessionDir = sha256("pi-qq-bridge\0"+key+"\0"+workspaceName) 前 32 位（P1-10 裁决：
+ *   会话历史按 (conversationKey, workspace) 隔离，永不跨 workspace 恢复）
+ * - setWorkspace：切换后旧会话 dispose，新 runtime 以新 cwd 创建
  */
 import { createHash } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { QQAgentSession } from "./qq-session.ts";
+import { QQAgentSession, type QQSessionLike } from "./qq-session.ts";
 import type { PiQQBridgeConfig } from "./config.ts";
 import type { QQInboundMessage } from "./types.ts";
 
+export function conversationKey(msg: QQInboundMessage): string {
+	return msg.type === "private"
+		? `private:${msg.userOpenId}`
+		: `group:${msg.groupOpenId ?? ""}`;
+}
+
 export interface QQSessionFactory {
-	create(): QQAgentSession;
+	create(): QQSessionLike;
 }
 
 export interface ConversationEntry {
 	key: string;
-	session: QQAgentSession;
+	session: QQSessionLike;
 	lastUsedAt: number;
 	initializing?: Promise<void>;
 }
@@ -28,22 +36,54 @@ export class ConversationRegistry {
 
 	private readonly config: PiQQBridgeConfig;
 	private readonly agentDir: string;
-	private readonly cwd: string;
 	private readonly sessionFactory: QQSessionFactory;
+	/** 当前 workspace（M5）：name + 绝对路径 */
+	private workspace: { name: string; path: string };
 
 	constructor(
 		config: PiQQBridgeConfig,
 		agentDir: string,
 		cwd: string,
 		sessionFactory: QQSessionFactory = { create: () => new QQAgentSession() },
+		workspace: { name: string; path: string } = { name: "default", path: cwd },
 	) {
 		this.config = config;
 		this.agentDir = agentDir;
-		this.cwd = cwd;
 		this.sessionFactory = sessionFactory;
+		this.workspace = workspace;
 	}
 
-	async get(msg: QQInboundMessage): Promise<QQAgentSession> {
+	/** 当前 workspace 信息（/workspace 展示用） */
+	get currentWorkspace(): { name: string; path: string } {
+		return this.workspace;
+	}
+
+	/**
+	 * 切换 workspace（spec §7.3）：旧会话全部 dispose（含初始化中的），
+	 * 新会话以新 cwd 懒创建；模型等配置由 QQAgentSession 重建时继承
+	 */
+	async setWorkspace(name: string, path: string): Promise<void> {
+		if (this.workspace.name === name) return;
+		const entries = [...this.entries.values()];
+		this.entries.clear();
+		for (const entry of entries) {
+			await entry.initializing?.catch(() => undefined);
+			await entry.session.dispose();
+		}
+		this.workspace = { name, path };
+	}
+
+	/** 移除某个对话的驻留会话（workspace 切换后旧会话已随 setWorkspace 清理；此方法供未来按需剔除） */
+	async drop(msg: QQInboundMessage): Promise<void> {
+		const key = conversationKey(msg);
+		const entry = this.entries.get(key);
+		if (!entry) return;
+		this.entries.delete(key);
+		await entry.initializing?.catch(() => undefined);
+		await entry.session.dispose();
+	}
+
+	async get(msg: QQInboundMessage): Promise<QQSessionLike> {
 		if (this.disposed) throw new Error("QQ 会话注册表已释放");
 		await this.evictExpired();
 		const key = conversationKey(msg);
@@ -63,7 +103,7 @@ export class ConversationRegistry {
 			entry.initializing = (async () => {
 				if (sessionDir)
 					await mkdir(sessionDir, { recursive: true, mode: 0o700 });
-				await entry?.session.init(this.cwd, {
+				await entry?.session.init(this.workspace.path, {
 					sessionDir,
 					persistent: this.config.sessions.mode === "persistent",
 					restore: this.config.sessions.restore,
@@ -82,7 +122,7 @@ export class ConversationRegistry {
 		return entry.session;
 	}
 
-	peek(msg: QQInboundMessage): QQAgentSession | undefined {
+	peek(msg: QQInboundMessage): QQSessionLike | undefined {
 		return this.entries.get(conversationKey(msg))?.session;
 	}
 
@@ -94,12 +134,10 @@ export class ConversationRegistry {
 		this.disposed = true;
 		const entries = [...this.entries.values()];
 		this.entries.clear();
-		await Promise.allSettled(
-			entries.map(async (entry) => {
-				await entry.initializing?.catch(() => undefined);
-				await entry.session.dispose();
-			}),
-		);
+		for (const entry of entries) {
+			await entry.initializing?.catch(() => undefined);
+			await entry.session.dispose();
+		}
 	}
 
 	private async evictExpired(): Promise<void> {
@@ -130,15 +168,10 @@ export class ConversationRegistry {
 
 	private sessionDirFor(key: string): string {
 		const hash = createHash("sha256")
-			.update(`pi-qq-bridge\0${key}`)
+			.update(`pi-qq-bridge\0${key}\0${this.workspace.name}`)
 			.digest("hex")
 			.slice(0, 32);
 		return join(this.agentDir, "pi-qq-bridge", "sessions", hash);
 	}
 }
 
-export function conversationKey(msg: QQInboundMessage): string {
-	return msg.type === "private"
-		? `private:${msg.userOpenId}`
-		: `group:${msg.groupOpenId ?? ""}`;
-}

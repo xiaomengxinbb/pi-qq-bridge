@@ -23,6 +23,7 @@ import {
 	normalizeAccessRole,
 } from "./access-requests.ts";
 import { AttachmentPipeline } from "./attachment-pipeline.ts";
+import { WorkspaceRegistry } from "./workspace-registry.ts";
 import { CommandStateMachine } from "./command-controller.ts";
 import {
 	acquireInstanceLock,
@@ -40,6 +41,7 @@ interface BridgeRuntime {
 	api: QQApi;
 	registry: ConversationRegistry;
 	router: QQRouter;
+	workspaceRegistry: WorkspaceRegistry;
 	accessRequests: QQAccessRequestStore;
 	lock: InstanceLock | null;
 	startedAt: number;
@@ -94,12 +96,17 @@ export default function piQQBridge(pi: ExtensionAPI): void {
 		const auth = new QQAuth(cfg.appId, cfg.clientSecret, {});
 		const gateway = new QQGateway(auth, { sandbox: cfg.sandbox });
 		const api = new QQApi(auth, { sandbox: cfg.sandbox });
-		const registry = new ConversationRegistry(cfg, agentDir, cwd);
+		const workspaceRegistry = new WorkspaceRegistry(cfg.workspaces, cwd);
+		const registry = new ConversationRegistry(cfg, agentDir, cwd, undefined, {
+			name: "default",
+			path: cwd,
+		});
 		const accessRequests = new QQAccessRequestStore();
 		const attachmentPipeline = new AttachmentPipeline(cfg, `${process.pid}-${Date.now()}`);
 		const router = new QQRouter(cfg, registry, api, {
 			accessRequests,
 			attachmentPipeline,
+			workspaceRegistry,
 			stateMachine: new CommandStateMachine(cfg.commands),
 			statusProvider: () => {
 				const { state, info } = gateway.getState();
@@ -114,6 +121,7 @@ export default function piQQBridge(pi: ExtensionAPI): void {
 			api,
 			registry,
 			router,
+			workspaceRegistry,
 			accessRequests,
 			lock: null,
 			startedAt: Date.now(),
@@ -388,6 +396,88 @@ export default function piQQBridge(pi: ExtensionAPI): void {
 			cfg.allowUsers = updated.allowUsers;
 			cfg.commands.admins = updated.commands.admins;
 			ctx.ui.notify(`已撤销 ${openid} 的权限`, "info");
+		},
+	});
+
+	pi.registerCommand("workspace", {
+		description: "查看/切换工作区：/workspace [名称] | add <名称> <路径> | remove <名称>",
+		getArgumentCompletions: (prefix: string) => {
+			const rt = getRuntime();
+			if (!rt) return null;
+			const items = rt.workspaceRegistry
+				.list()
+				.map((w) => ({ value: w.name, label: `${w.name} → ${w.path}` }));
+			const filtered = items.filter((i) => i.value.startsWith(prefix));
+			return filtered.length > 0 ? filtered : null;
+		},
+		handler: async (args, ctx) => {
+			const rt = getRuntime();
+			const cfg = loadConfigOnce();
+			if (!rt || !cfg) {
+				notify(ctx, "QQ 网关未运行或配置不可用（先 /qqbot-start）");
+				return;
+			}
+			const tokens = (args ?? "").trim().split(/\s+/).filter(Boolean);
+			const registry = rt.workspaceRegistry;
+			if (tokens.length === 0) {
+				const current = rt.registry.currentWorkspace;
+				const lines = [
+					"## 工作区",
+					"",
+					`当前：**${current.name}**（${current.path}）`,
+					"",
+					...registry.list().map((w) => `- \`${w.name}\`  ${w.path}`),
+					"",
+					"切换：/workspace <名称>；管理：/workspace add <名称> <路径> | remove <名称>",
+				];
+				ctx.ui.notify(lines.join("\n"), "info");
+				return;
+			}
+			if (tokens[0] === "add") {
+				const [name, path, ...rest] = tokens.slice(1);
+				if (!name || !path) {
+					ctx.ui.notify("用法：/workspace add <名称> <绝对路径> [描述]", "info");
+					return;
+				}
+				try {
+					const workspace = registry.add(name, path, rest.join(" "));
+					// 持久化 + 热生效
+					cfg.workspaces = registry.list().filter((w) => w.name !== "default");
+					saveConfig(expandHome(DEFAULT_CONFIG_PATH), cfg);
+					ctx.ui.notify(`已添加工作区 ${workspace.name} → ${workspace.path}`, "info");
+				} catch (err) {
+					notify(ctx, `pi-qq-bridge：${(err as Error).message}`);
+				}
+				return;
+			}
+			if (tokens[0] === "remove") {
+				const name = tokens[1];
+				if (!name) {
+					ctx.ui.notify("用法：/workspace remove <名称>", "info");
+					return;
+				}
+				try {
+					registry.remove(name);
+					cfg.workspaces = registry.list().filter((w) => w.name !== "default");
+					saveConfig(expandHome(DEFAULT_CONFIG_PATH), cfg);
+					ctx.ui.notify(`已移除工作区 ${name}`, "info");
+				} catch (err) {
+					notify(ctx, `pi-qq-bridge：${(err as Error).message}`);
+				}
+				return;
+			}
+			// 切换
+			try {
+				const resolved = registry.resolve(tokens[0]!);
+				if (rt.registry.currentWorkspace.name === resolved.name) {
+					ctx.ui.notify(`已在工作区 ${resolved.name}（${resolved.path}）`, "info");
+					return;
+				}
+				await rt.registry.setWorkspace(resolved.name, resolved.path);
+				ctx.ui.notify(`已切换工作区：${resolved.name}（${resolved.path}）`, "info");
+			} catch (err) {
+				notify(ctx, `pi-qq-bridge：${(err as Error).message}`);
+			}
 		},
 	});
 

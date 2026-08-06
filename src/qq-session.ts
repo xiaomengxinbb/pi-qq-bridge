@@ -91,6 +91,29 @@ export interface QQModelInfo {
 	reasoning: boolean;
 }
 
+/** 会话结构接口（registry 创建、router 使用；QQAgentSession 结构兼容） */
+export interface QQSessionLike {
+	init(cwd: string, options?: QQSessionOptions): Promise<void>;
+	isReady(): boolean;
+	isStreaming(): boolean;
+	dispose(): Promise<void>;
+	run(prompt: string, options?: { images?: import("./types.ts").QQImageContent[]; observer?: QQAgentRunObserver }): Promise<QQRunResult>;
+	currentModel(): QQModelInfo | undefined;
+	availableModels(): Promise<QQModelInfo[]>;
+	setModel(provider: string, modelId: string): Promise<QQModelInfo>;
+	thinkingLevel(): string;
+	availableThinkingLevels(): string[];
+	setThinkingLevel(level: string): string;
+	newSession(name?: string): Promise<{ id: string; name?: string }>;
+	listSessions(): Promise<QQSessionInfo[]>;
+	resumeSession(path: string): Promise<{ id: string; name?: string }>;
+	setSessionName(name: string): string;
+	sessionId(): string;
+	sessionName(): string | undefined;
+	compact(instructions?: string): Promise<{ tokensBefore?: number }>;
+	abort(): Promise<void>;
+}
+
 /** 会话信息（listSessions 返回项的结构化视图） */
 export interface QQSessionInfo {
 	path: string;

@@ -10,7 +10,8 @@ import type {
 	QQModelInfo,
 	QQSessionInfo,
 } from "../src/qq-session.ts";
-import type { ConversationRegistryLike, QQSessionLike } from "../src/router.ts";
+import type { ConversationRegistryLike } from "../src/router.ts";
+import type { QQSessionLike } from "../src/qq-session.ts";
 
 /** 从 DEFAULT_CONFIG 构造完整配置（默认无管理员、单授权用户可选） */
 export function makeTestConfig(
@@ -70,6 +71,12 @@ export class FakeSession implements QQSessionLike {
 
 	constructor(opts: FakeSessionOpts = {}) {
 		this.opts = opts;
+	}
+
+	async init(): Promise<void> {}
+
+	isReady(): boolean {
+		return true;
 	}
 
 	async run(prompt: string, options?: unknown): Promise<QQRunResult> {
@@ -168,6 +175,12 @@ export class FakeSession implements QQSessionLike {
 export class FakeRegistry implements ConversationRegistryLike {
 	sessions = new Map<string, FakeSession>();
 	created: string[] = [];
+	currentWorkspace: { name: string; path: string } = { name: "default", path: process.cwd() };
+
+	async setWorkspace(name: string, path: string): Promise<void> {
+		this.currentWorkspace = { name, path };
+		this.sessions.clear();
+	}
 	private readonly sessionOpts: FakeSessionOpts;
 	private readonly sessionFactory: (key: string) => FakeSession;
 
