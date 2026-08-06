@@ -75,6 +75,8 @@ export interface FakeSessionOpts {
 	onNewSession?: () => void;
 	onAbort?: () => void;
 	onCompact?: () => void;
+	onSteer?: (prompt: string) => void;
+	onClearPending?: () => void;
 }
 
 export class FakeSession implements QQSessionLike {
@@ -180,6 +182,14 @@ export class FakeSession implements QQSessionLike {
 	async abort(): Promise<void> {
 		this.opts.onAbort?.();
 		this.opts.streaming = false;
+	}
+
+	async steer(prompt: string): Promise<void> {
+		this.opts.onSteer?.(prompt);
+	}
+
+	clearPendingMessages(): void {
+		this.opts.onClearPending?.();
 	}
 }
 

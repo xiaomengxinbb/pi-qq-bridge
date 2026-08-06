@@ -87,6 +87,8 @@ export class QQRouter {
 	private running = false;
 	private activeSession: QQSessionLike | undefined;
 	private activeAbort: AbortController | undefined;
+	/** M7：当前运行中的对话（同对话消息可 steering 插嘴） */
+	private activeConversation: { key: string; session: QQSessionLike; accepting: boolean } | undefined;
 	private readonly replyBudgetLimit: number;
 	private readonly maxQueueSize: number;
 	private readonly stateMachine: CommandStateMachine;
@@ -148,6 +150,12 @@ export class QQRouter {
 		}
 		// 无文本且无附件 → 忽略（P1-8 裁决）；纯附件消息 M3 入队
 		if (!text && msg.attachments.length === 0) return;
+		// 同对话运行中 → steering 插嘴（不等旧任务完成）
+		const active = this.activeConversation;
+		if (active?.accepting && active.key === conversationKeyOf(msg)) {
+			void this.steerInto(active, msg);
+			return;
+		}
 		if (this.queue.length >= this.maxQueueSize) return; // 满则丢最新
 		this.queue.push(msg);
 		this.emit({
@@ -597,6 +605,10 @@ export class QQRouter {
 		this.clearQueue();
 		let aborted = false;
 		this.activeAbort?.abort(new Error("QQ task stopped"));
+		if (this.activeConversation) {
+			this.activeConversation.accepting = false;
+			this.activeConversation.session.clearPendingMessages?.();
+		}
 		if (this.activeSession?.isStreaming() === true) {
 			await this.activeSession.abort();
 			aborted = true;
@@ -751,6 +763,37 @@ export class QQRouter {
 
 	// ── prompt 队列（M1） ──────────────────────────────────────────
 
+	/** steering 插嘴：附件走管线后 session.steer（中间回合不回 QQ，聚合回复在 runOne 结束时发送） */
+	private async steerInto(
+		active: { key: string; session: QQSessionLike; accepting: boolean },
+		msg: QQInboundMessage,
+	): Promise<void> {
+		try {
+			let prompt = msg.text;
+			let images: import("./types.ts").QQImageContent[] = [];
+			if (msg.attachments.length > 0 && this.attachmentPipeline) {
+				const controller = new AbortController();
+				const prepared = await this.attachmentPipeline.prepare(msg, controller.signal);
+				if (hasUsableAgentInput(msg, prepared.resources)) {
+					prompt = prepared.prompt;
+					images = prepared.images;
+				} else {
+					await prepared.cleanup();
+					await this.replyToQQ(msg, formatAttachmentFailures(prepared.resources));
+					return;
+				}
+				await prepared.cleanup();
+			}
+			await active.session.steer?.(prompt, { images });
+		} catch {
+			// steering 失败（如任务已结束）→ 重新入队处理
+			if (this.activeConversation?.key === active.key && this.activeConversation.accepting) {
+				this.queue.push(msg);
+				void this.pump();
+			}
+		}
+	}
+
 	private async pump(): Promise<void> {
 		if (this.running) return;
 		this.running = true;
@@ -807,6 +850,7 @@ export class QQRouter {
 			}
 			const session = await this.registry.get(msg);
 			this.activeSession = session;
+			this.activeConversation = { key: conversationKeyOf(msg), session, accepting: true };
 			// 出站媒体交付上下文（M6）：绑定当前回合；agent 可调用 qq_send_local_file
 			const delivery = new QQOutboundDeliveryContext({
 				config: this.config,
@@ -855,6 +899,7 @@ export class QQRouter {
 		} finally {
 			if (ackTimer) clearTimeout(ackTimer);
 			this.activeAbort = undefined;
+			this.activeConversation = undefined;
 			if (preparedCleanup) await preparedCleanup().catch(() => undefined);
 		}
 	}

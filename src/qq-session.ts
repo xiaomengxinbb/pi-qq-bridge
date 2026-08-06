@@ -115,6 +115,10 @@ export interface QQSessionLike {
 	compact(instructions?: string): Promise<{ tokensBefore?: number }>;
 	abort(): Promise<void>;
 	bindOutboundDelivery?(context?: unknown): void;
+	/** M7：运行中插嘴（当前 assistant 回合结束后注入） */
+	steer?(prompt: string, options?: { images?: import("./types.ts").QQImageContent[] }): Promise<void>;
+	/** M7：清除未投递的 steering/followUp 队列 */
+	clearPendingMessages?(): void;
 }
 
 /** 会话信息（listSessions 返回项的结构化视图） */
