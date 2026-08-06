@@ -27,7 +27,7 @@ test("端到端：C2C 消息 → 隔离会话 → 被动回复（msg_id 引用 +
 		const registry = new FakeRegistry({
 			text: "处理完成（收到：帮我看看当前目录）",
 		});
-		const router = new QQRouter(makeTestConfig(), registry, api);
+		const router = new QQRouter(makeTestConfig({ replyFormat: "plain" }), registry, api);
 		gateway.onInbound((msg) => router.handleInbound(msg));
 		await gateway.start();
 
@@ -79,7 +79,7 @@ test("端到端：未授权用户 → 申请码回复，不触发 agent", async 
 			},
 			async dispose(): Promise<void> {},
 		};
-		const router = new QQRouter(makeTestConfig(), registry, api, {
+		const router = new QQRouter(makeTestConfig({ replyFormat: "plain" }), registry, api, {
 			accessRequests: new QQAccessRequestStore(),
 		});
 		gateway.onInbound((msg) => router.handleInbound(msg));
@@ -139,7 +139,7 @@ test("端到端：重复推送同 msg_id → 只处理一次", async () => {
 				return normal.dispose();
 			},
 		};
-		const router = new QQRouter(makeTestConfig(), counting, api);
+		const router = new QQRouter(makeTestConfig({ replyFormat: "plain" }), counting, api);
 		gateway.onInbound((msg) => router.handleInbound(msg));
 		await gateway.start();
 
@@ -172,7 +172,7 @@ test("端到端：QQ 命令 /help 走通", async () => {
 			apiBase: mock.baseUrl,
 		});
 		const api = new QQApi(auth, { sandbox: false, apiBase: mock.baseUrl });
-		const router = new QQRouter(makeTestConfig(), new FakeRegistry(), api);
+		const router = new QQRouter(makeTestConfig({ replyFormat: "plain" }), new FakeRegistry(), api);
 		gateway.onInbound((msg) => router.handleInbound(msg));
 		await gateway.start();
 

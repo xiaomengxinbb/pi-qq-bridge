@@ -43,7 +43,7 @@ test("router：allowGroups 授权的群消息 → 群会话 → 群回复路径"
 		const gateway = new QQGateway(auth, { sandbox: false, apiBase: mock.baseUrl });
 		const api = new QQApi(auth, { sandbox: false, apiBase: mock.baseUrl });
 		const registry = new FakeRegistry({ text: "群回复内容" });
-		const cfg = makeTestConfig({ allowGroups: ["group_openid_1"] });
+		const cfg = makeTestConfig({ allowGroups: ["group_openid_1"], replyFormat: "plain" });
 		const router = new QQRouter(cfg, registry, api);
 		gateway.onInbound((msg) => router.handleInbound(msg));
 		await gateway.start();
@@ -69,7 +69,7 @@ test("router：未授权群 → 拒绝回复（不产生访问申请）", async 
 		const api = new QQApi(auth, { sandbox: false, apiBase: mock.baseUrl });
 		let runs = 0;
 		const registry = new FakeRegistry({ onPrompt: () => { runs += 1; } });
-		const router = new QQRouter(makeTestConfig({ allowGroups: [] }), registry, api);
+		const router = new QQRouter(makeTestConfig({ allowGroups: [], replyFormat: "plain" }), registry, api);
 		gateway.onInbound((msg) => router.handleInbound(msg));
 		await gateway.start();
 		mock.sendEvent(...Object.entries(groupAtMessageEvent({ id: "g_evil" })).map(([, v]) => v) as [string, unknown]);
@@ -90,7 +90,7 @@ test("router：私聊与群聊会话隔离（不同作用域）", async () => {
 		const gateway = new QQGateway(auth, { sandbox: false, apiBase: mock.baseUrl });
 		const api = new QQApi(auth, { sandbox: false, apiBase: mock.baseUrl });
 		const registry = new FakeRegistry({ text: "ok" });
-		const cfg = makeTestConfig({ allowGroups: ["group_openid_1"] });
+		const cfg = makeTestConfig({ allowGroups: ["group_openid_1"], replyFormat: "plain" });
 		const router = new QQRouter(cfg, registry, api);
 		gateway.onInbound((msg) => router.handleInbound(msg));
 		await gateway.start();
@@ -116,7 +116,8 @@ test("群聊命令：allowInGroups=false 时管理员也无法在群内执行 mu
 		const registry = new FakeRegistry();
 		const cfg = makeTestConfig({
 			allowGroups: ["group_openid_1"],
-			commands: { ...makeTestConfig().commands, admins: ["group_user_1"], allowInGroups: false },
+			replyFormat: "plain",
+			commands: { ...makeTestConfig({ replyFormat: "plain" }).commands, admins: ["group_user_1"], allowInGroups: false },
 		});
 		const router = new QQRouter(cfg, registry, api);
 		gateway.onInbound((msg) => router.handleInbound(msg));

@@ -24,6 +24,8 @@ export interface MockQQServer {
 	messages: Array<{ path: string; body: Record<string, unknown> }>;
 	/** 收到的文件上传（POST /v2/users|groups/{openid}/files） */
 	uploads: string[];
+	/** 收到的分片 PUT（body 字节数） */
+	partPuts: number[];
 	sendEvent(t: string, d: unknown): void;
 	close(): Promise<void>;
 }
@@ -75,6 +77,7 @@ export async function startMockQQServer(): Promise<MockQQServer> {
 	const events: string[] = [];
 	const messages: MockQQServer["messages"] = [];
 	const uploads: string[] = [];
+	const partPuts: number[] = [];
 	let identify: unknown;
 	let heartbeatCount = 0;
 	let wsSockets: Socket[] = [];
@@ -206,6 +209,48 @@ export async function startMockQQServer(): Promise<MockQQServer> {
 			});
 			return;
 		}
+		if (req.method === "PUT") {
+			let size = 0;
+			req.on("data", (chunk) => {
+				size += chunk.length;
+			});
+			req.on("end", () => {
+				partPuts.push(size);
+				res.statusCode = 200;
+				res.end("ok");
+			});
+			return;
+		}
+		if (req.method === "POST" && /\/v2\/(users|groups)\/[^/]+\/files\/upload_prepare$/.test(url)) {
+			let raw = "";
+			req.on("data", (chunk) => {
+				raw += chunk.toString();
+			});
+			req.on("end", () => {
+				const body = JSON.parse(raw || "{}") as { file_size?: number };
+				const fileSize = body.file_size ?? 0;
+				const blockSize = 1024 * 1024;
+				const totalParts = Math.max(1, Math.ceil(fileSize / blockSize));
+				const urls = Array.from({ length: totalParts }, (_, i) => ({
+					url: `http://127.0.0.1:${httpPort}/parts/${i + 1}`,
+					part_number: i + 1,
+				}));
+				res.setHeader("Content-Type", "application/json");
+				res.end(JSON.stringify({ file_uuid: "uuid_1", upload_id: "up_1", block_size: blockSize, max_parts: totalParts, urls }));
+			});
+			return;
+		}
+		if (req.method === "POST" && /\/v2\/(users|groups)\/[^/]+\/files\/upload_part_finish$/.test(url)) {
+			let raw = "";
+			req.on("data", (chunk) => {
+				raw += chunk.toString();
+			});
+			req.on("end", () => {
+				res.setHeader("Content-Type", "application/json");
+				res.end(JSON.stringify({ file_info: `file_info_chunked_${partPuts.length}` }));
+			});
+			return;
+		}
 		if (
 			req.method === "POST" &&
 			/\/v2\/(users|groups)\/[^/]+\/files$/.test(url)
@@ -247,6 +292,7 @@ export async function startMockQQServer(): Promise<MockQQServer> {
 		},
 		messages,
 		uploads,
+		partPuts,
 		sendEvent(t: string, d: unknown) {
 			events.push(t);
 			const payload = JSON.stringify({ op: 0, s: Date.now(), t, d });

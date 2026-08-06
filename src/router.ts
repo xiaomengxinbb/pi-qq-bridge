@@ -30,6 +30,7 @@ import {
 } from "./attachment-pipeline.ts";
 import { type WorkspaceRegistry, WorkspaceError } from "./workspace-registry.ts";
 import { QQOutboundDeliveryContext } from "./outbound-media.ts";
+import { formatQQReply } from "./reply-formatter.ts";
 import type { QQInboundMessage, QQReplyTarget } from "./types.ts";
 import type { QQRunResult, QQSessionInfo, QQSessionLike } from "./qq-session.ts";
 
@@ -827,12 +828,8 @@ export class QQRouter {
 					.join("\n");
 				text = `${text}\n\n---\n\n## 执行摘要\n${summary}`;
 			}
-			if (text && !budget.isExhausted) {
-				const seq = budget.nextSeq();
-				if (seq !== undefined) {
-					await this.api.sendText(target, text, seq);
-					this.recordOutbound(msg, text, seq);
-				}
+			if (text) {
+				await this.sendFormatted(msg, text, undefined, true, budget);
 			}
 			this.emit({ kind: "run_end", messageId: msg.id, ok: true });
 		} catch (err) {
@@ -862,17 +859,62 @@ export class QQRouter {
 		}
 	}
 
-	/** 发送回复（命令/拒绝/申请共用）：每次调用占 1 次配额 */
+	/** 发送回复（命令/拒绝/申请共用）：分块发送，每块占 1 次配额 */
 	private async replyToQQ(
 		msg: QQInboundMessage,
 		content: string,
 		keyboard?: QQKeyboard,
 	): Promise<void> {
-		const budget = new ReplyBudget(msg.id, this.replyBudgetLimit);
-		const seq = budget.nextSeq();
-		if (seq === undefined) return;
-		await this.api.sendText(this.targetOf(msg), content, seq, keyboard);
-		this.recordOutbound(msg, content, seq);
+		await this.sendFormatted(msg, content, keyboard, true);
+	}
+
+	/** 分块 + Markdown 优先（降级纯文本保持 msg_seq 对齐） */
+	private async sendFormatted(
+		msg: QQInboundMessage,
+		content: string,
+		keyboard: QQKeyboard | undefined,
+		fallbackToPlain: boolean,
+		budget?: ReplyBudget,
+	): Promise<void> {
+		const sharedBudget = budget ?? new ReplyBudget(msg.id, this.replyBudgetLimit);
+		const target = this.targetOf(msg);
+		const formatted = formatQQReply(content, this.config.replyFormat);
+		const chunks = formatted.markdown;
+		const plainChunks = formatted.plain;
+		for (let index = 0; index < chunks.length; index++) {
+			if (sharedBudget.isExhausted) break;
+			const seq = sharedBudget.nextSeq();
+			if (seq === undefined) break;
+			const chunk = chunks[index]!;
+			const plain = plainChunks[index] ?? chunk;
+			try {
+				if (this.config.replyFormat === "plain") {
+					await this.api.sendText(target, plain, seq, index === 0 ? keyboard : undefined);
+				} else {
+					try {
+						await this.api.sendMarkdown(target, chunk, seq, index === 0 ? keyboard : undefined);
+					} catch (err) {
+						if (fallbackToPlain && isMarkdownRejected(err)) {
+							// Markdown 被平台拒绝 → 本条与后续全部降级纯文本（msg_seq 对齐）
+							await this.api.sendText(target, plain, seq, index === 0 ? keyboard : undefined);
+							for (let rest = index + 1; rest < chunks.length; rest++) {
+								if (sharedBudget.isExhausted) break;
+								const restSeq = sharedBudget.nextSeq();
+								if (restSeq === undefined) break;
+								await this.api.sendText(target, plainChunks[rest] ?? chunks[rest]!, restSeq);
+							}
+						} else {
+							throw err;
+						}
+						break;
+					}
+				}
+				this.recordOutbound(msg, chunk, seq);
+			} catch (err) {
+				// 回复失败不抛出（避免队列卡死）；命令场景由调用方处理
+				if (!(err instanceof Error && /Markdown|markdown/i.test(err.message))) break;
+			}
+		}
 	}
 
 	private targetOf(msg: QQInboundMessage): QQReplyTarget {
@@ -905,6 +947,12 @@ export class QQRouter {
 			// 观察者失败不影响路由
 		}
 	}
+}
+
+function isMarkdownRejected(err: unknown): boolean {
+	// QQ 平台拒绝 Markdown：msg_type=2 被拒时返回错误（平台无统一 code，按文本特征判断）
+	const message = err instanceof Error ? err.message : String(err);
+	return /markdown|格式|format|msg_type/i.test(message);
 }
 
 // ── 模块级辅助 ────────────────────────────────────────────────────

@@ -35,6 +35,10 @@ export interface SentMessage {
 }
 
 export function makeApi(sent: SentMessage[], failWith?: Error): QQApi {
+	const push = (target: QQReplyTarget, content: string, msgSeq: number, keyboard?: unknown): void => {
+		if (failWith) throw failWith;
+		sent.push({ target, content, msgSeq, keyboard });
+	};
 	return {
 		async sendText(
 			target: QQReplyTarget,
@@ -42,8 +46,15 @@ export function makeApi(sent: SentMessage[], failWith?: Error): QQApi {
 			msgSeq: number,
 			keyboard?: unknown,
 		): Promise<void> {
-			if (failWith) throw failWith;
-			sent.push({ target, content, msgSeq, keyboard });
+			push(target, content, msgSeq, keyboard);
+		},
+		async sendMarkdown(
+			target: QQReplyTarget,
+			content: string,
+			msgSeq: number,
+			keyboard?: unknown,
+		): Promise<void> {
+			push(target, content, msgSeq, keyboard);
 		},
 	} as unknown as QQApi;
 }
