@@ -4,7 +4,13 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync, rmSync, linkSync, symlinkSync } from "node:fs";
+import {
+	mkdtempSync,
+	writeFileSync,
+	rmSync,
+	linkSync,
+	symlinkSync,
+} from "node:fs";
 import { join } from "node:path";
 import {
 	QQOutboundDeliveryContext,
@@ -33,17 +39,27 @@ test("resolveAllowedLocalFile：allowedRoots 内放行、外拒绝、不存在�
 	mkdirSync(outside, { recursive: true });
 	writeFileSync(join(allowed, "a.txt"), "hello");
 	try {
-		const resolved = await resolveAllowedLocalFile(join(allowed, "a.txt"), process.cwd(), [allowed]);
+		const resolved = await resolveAllowedLocalFile(
+			join(allowed, "a.txt"),
+			process.cwd(),
+			[allowed],
+		);
 		assert.ok(resolved.endsWith("a.txt"));
 		// 未配置 root → 仅 OS tmp 允许
 		await assert.rejects(
 			() => resolveAllowedLocalFile(join(allowed, "a.txt"), process.cwd(), []),
-			(err: unknown) => err instanceof QQOutboundMediaError && err.code === "path_outside_allowed_roots",
+			(err: unknown) =>
+				err instanceof QQOutboundMediaError &&
+				err.code === "path_outside_allowed_roots",
 		);
 		// 不存在
 		await assert.rejects(
-			() => resolveAllowedLocalFile(join(allowed, "missing.txt"), process.cwd(), [allowed]),
-			(err: unknown) => err instanceof QQOutboundMediaError && err.code === "file_not_found",
+			() =>
+				resolveAllowedLocalFile(join(allowed, "missing.txt"), process.cwd(), [
+					allowed,
+				]),
+			(err: unknown) =>
+				err instanceof QQOutboundMediaError && err.code === "file_not_found",
 		);
 	} finally {
 		rmSync(dir, { recursive: true, force: true });
@@ -62,8 +78,13 @@ test("resolveAllowedLocalFile：符号链接解析到 root 外拒绝", async () 
 		// 符号链接在 allowed 内但指向 outside
 		symlinkSync(join(outside, "secret.txt"), join(allowed, "link.txt"));
 		await assert.rejects(
-			() => resolveAllowedLocalFile(join(allowed, "link.txt"), process.cwd(), [allowed]),
-			(err: unknown) => err instanceof QQOutboundMediaError && err.code === "path_outside_allowed_roots",
+			() =>
+				resolveAllowedLocalFile(join(allowed, "link.txt"), process.cwd(), [
+					allowed,
+				]),
+			(err: unknown) =>
+				err instanceof QQOutboundMediaError &&
+				err.code === "path_outside_allowed_roots",
 		);
 	} finally {
 		rmSync(dir, { recursive: true, force: true });
@@ -73,7 +94,10 @@ test("resolveAllowedLocalFile：符号链接解析到 root 外拒绝", async () 
 test("normalizeInputPath：相对路径基于 cwd；Windows 路径转 WSL", () => {
 	assert.equal(normalizeInputPath("a.txt", "/home/user"), "/home/user/a.txt");
 	assert.equal(normalizeInputPath("/abs/a.txt", "/home/user"), "/abs/a.txt");
-	assert.equal(normalizeInputPath("C:\\Users\\x\\a.txt", "/home/user"), "/mnt/c/Users/x/a.txt");
+	assert.equal(
+		normalizeInputPath("C:\\Users\\x\\a.txt", "/home/user"),
+		"/mnt/c/Users/x/a.txt",
+	);
 	assert.equal(normalizeInputPath("@/tmp/x.txt", "/home/user"), "/tmp/x.txt");
 	assert.throws(() => normalizeInputPath("\u0000bad", "/"), /路径无效/);
 });
@@ -105,11 +129,18 @@ function makeContext(
 	const config = overrides.config ?? makeTestConfig();
 	if (!overrides.config) {
 		// 开启出站（默认关）
-		config.outboundMedia = { ...config.outboundMedia, enabled: true, adminsOnly: false };
+		config.outboundMedia = {
+			...config.outboundMedia,
+			enabled: true,
+			adminsOnly: false,
+		};
 	}
 	// allowedRoots 始终合并（测试目录在 tmp 外，必须显式授权）
 	if (overrides.allowedRoots) {
-		config.outboundMedia = { ...config.outboundMedia, allowedRoots: overrides.allowedRoots };
+		config.outboundMedia = {
+			...config.outboundMedia,
+			allowedRoots: overrides.allowedRoots,
+		};
 	}
 	const context = new QQOutboundDeliveryContext({
 		config,
@@ -117,17 +148,22 @@ function makeContext(
 		message: overrides.message ?? msg({ userOpenId: "user_allowed" }),
 		target: { type: "private", userOpenId: "user_allowed", msgId: "m1" },
 		api: overrides.api ?? makeApi([], []),
-		reserveMessageSequence: overrides.seqBudget ?? (() => {
-			budgetUsed.push(1);
-			return budgetUsed.length;
-		}),
+		reserveMessageSequence:
+			overrides.seqBudget ??
+			(() => {
+				budgetUsed.push(1);
+				return budgetUsed.length;
+			}),
 	});
 	return { context, budgetUsed };
 }
 
 test("交付：OS tmp 内的文件可发送（默认 root）", async () => {
 	const dir = tempDir();
-	writeFileSync(join(dir, "pic.png"), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x01]));
+	writeFileSync(
+		join(dir, "pic.png"),
+		Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x01]),
+	);
 	try {
 		const { context } = makeContext({ allowedRoots: [dir] });
 		const record = await context.sendLocalFile(join(dir, "pic.png"), "image");
@@ -148,7 +184,8 @@ test("交付：outboundMedia.enabled=false → outbound_disabled", async () => {
 		const { context } = makeContext({ config });
 		await assert.rejects(
 			() => context.sendLocalFile(join(dir, "a.txt")),
-			(err: unknown) => err instanceof QQOutboundMediaError && err.code === "outbound_disabled",
+			(err: unknown) =>
+				err instanceof QQOutboundMediaError && err.code === "outbound_disabled",
 		);
 		context.close();
 	} finally {
@@ -160,12 +197,20 @@ test("交付：非管理员（adminsOnly）→ outbound_not_authorized", async (
 	const dir = tempDir();
 	writeFileSync(join(dir, "a.txt"), "x");
 	try {
-		const config = makeTestConfig({ commands: { ...makeTestConfig().commands, admins: [] } });
-		config.outboundMedia = { ...config.outboundMedia, enabled: true, adminsOnly: true };
+		const config = makeTestConfig({
+			commands: { ...makeTestConfig().commands, admins: [] },
+		});
+		config.outboundMedia = {
+			...config.outboundMedia,
+			enabled: true,
+			adminsOnly: true,
+		};
 		const { context } = makeContext({ config });
 		await assert.rejects(
 			() => context.sendLocalFile(join(dir, "a.txt")),
-			(err: unknown) => err instanceof QQOutboundMediaError && err.code === "outbound_not_authorized",
+			(err: unknown) =>
+				err instanceof QQOutboundMediaError &&
+				err.code === "outbound_not_authorized",
 		);
 		context.close();
 	} finally {
@@ -181,7 +226,9 @@ test("交付：硬链接拒绝", async () => {
 		const { context } = makeContext({ allowedRoots: [dir] });
 		await assert.rejects(
 			() => context.sendLocalFile(join(dir, "hardlink.txt")),
-			(err: unknown) => err instanceof QQOutboundMediaError && err.code === "hardlink_not_allowed",
+			(err: unknown) =>
+				err instanceof QQOutboundMediaError &&
+				err.code === "hardlink_not_allowed",
 		);
 		context.close();
 	} finally {
@@ -196,7 +243,9 @@ test("交付：请求 image 但文件不是图片 → unsupported_media_type", a
 		const { context } = makeContext({ allowedRoots: [dir] });
 		await assert.rejects(
 			() => context.sendLocalFile(join(dir, "not-image.txt"), "image"),
-			(err: unknown) => err instanceof QQOutboundMediaError && err.code === "unsupported_media_type",
+			(err: unknown) =>
+				err instanceof QQOutboundMediaError &&
+				err.code === "unsupported_media_type",
 		);
 		context.close();
 	} finally {
@@ -211,7 +260,9 @@ test("交付：回复预算耗尽 → reply_budget_exhausted", async () => {
 		const { context } = makeContext({ seqBudget: () => undefined });
 		await assert.rejects(
 			() => context.sendLocalFile(join(dir, "a.txt")),
-			(err: unknown) => err instanceof QQOutboundMediaError && err.code === "reply_budget_exhausted",
+			(err: unknown) =>
+				err instanceof QQOutboundMediaError &&
+				err.code === "reply_budget_exhausted",
 		);
 		context.close();
 	} finally {
@@ -227,7 +278,9 @@ test("交付：回合结束后（close）拒绝", async () => {
 		context.close();
 		await assert.rejects(
 			() => context.sendLocalFile(join(dir, "a.txt")),
-			(err: unknown) => err instanceof QQOutboundMediaError && err.code === "delivery_context_closed",
+			(err: unknown) =>
+				err instanceof QQOutboundMediaError &&
+				err.code === "delivery_context_closed",
 		);
 	} finally {
 		rmSync(dir, { recursive: true, force: true });
@@ -248,7 +301,8 @@ test("交付：失败记录含错误码（spec §6.14 出站枚举）", async ()
 		const { context } = makeContext({ config, allowedRoots: [dir] });
 		await assert.rejects(
 			() => context.sendLocalFile(join(dir, "big.bin")),
-			(err: unknown) => err instanceof QQOutboundMediaError && err.code === "file_too_large",
+			(err: unknown) =>
+				err instanceof QQOutboundMediaError && err.code === "file_too_large",
 		);
 		const record = context.records[0];
 		assert.equal(record?.errorCode, "file_too_large");

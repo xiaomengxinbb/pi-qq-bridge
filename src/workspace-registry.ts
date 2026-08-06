@@ -32,12 +32,16 @@ export class WorkspaceRegistry {
 		for (const workspace of configured) {
 			if (!workspace || typeof workspace.name !== "string") continue;
 			if (!NAME_PATTERN.test(workspace.name)) {
-				throw new WorkspaceError(`workspace 名称非法（仅允许字母数字_-，1-32 字符）："${workspace.name}"`);
+				throw new WorkspaceError(
+					`workspace 名称非法（仅允许字母数字_-，1-32 字符）："${workspace.name}"`,
+				);
 			}
 			this.workspaces.set(workspace.name, {
 				name: workspace.name,
 				path: workspace.path || agentCwd,
-				...(workspace.description ? { description: workspace.description } : {}),
+				...(workspace.description
+					? { description: workspace.description }
+					: {}),
 			});
 		}
 		// 启动即校验全部 path（配置错误尽早暴露）
@@ -58,7 +62,9 @@ export class WorkspaceRegistry {
 	resolve(name: string): { name: string; path: string } {
 		const workspace = this.workspaces.get(name);
 		if (!workspace) {
-			throw new WorkspaceError(`工作区 "${name}" 不存在。可用：${[...this.workspaces.keys()].join("、")}`);
+			throw new WorkspaceError(
+				`工作区 "${name}" 不存在。可用：${[...this.workspaces.keys()].join("、")}`,
+			);
 		}
 		return { name: workspace.name, path: this.resolvePath(workspace.path) };
 	}
@@ -68,9 +74,14 @@ export class WorkspaceRegistry {
 		if (!NAME_PATTERN.test(name)) {
 			throw new WorkspaceError("workspace 名称仅允许字母数字_-（1-32 字符）");
 		}
-		if (this.workspaces.has(name)) throw new WorkspaceError(`工作区 "${name}" 已存在`);
+		if (this.workspaces.has(name))
+			throw new WorkspaceError(`工作区 "${name}" 已存在`);
 		const real = this.resolvePath(path);
-		const workspace: Workspace = { name, path: real, ...(description ? { description } : {}) };
+		const workspace: Workspace = {
+			name,
+			path: real,
+			...(description ? { description } : {}),
+		};
 		this.workspaces.set(name, workspace);
 		return workspace;
 	}
@@ -78,11 +89,13 @@ export class WorkspaceRegistry {
 	/** 移除 workspace（default 不可移除） */
 	remove(name: string): void {
 		if (name === "default") throw new WorkspaceError("default 工作区不可移除");
-		if (!this.workspaces.delete(name)) throw new WorkspaceError(`工作区 "${name}" 不存在`);
+		if (!this.workspaces.delete(name))
+			throw new WorkspaceError(`工作区 "${name}" 不存在`);
 	}
 
 	private resolvePath(path: string): string {
-		if (!isAbsolute(path)) throw new WorkspaceError(`workspace 路径必须是绝对路径：${path}`);
+		if (!isAbsolute(path))
+			throw new WorkspaceError(`workspace 路径必须是绝对路径：${path}`);
 		let real: string;
 		try {
 			real = realpathSync(path);

@@ -174,4 +174,3 @@ export class ConversationRegistry {
 		return join(this.agentDir, "pi-qq-bridge", "sessions", hash);
 	}
 }
-

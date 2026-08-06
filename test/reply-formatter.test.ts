@@ -30,7 +30,10 @@ test("formatQQReply：长回复 ≤4 块 + 编号 + UTF-8 字节预算", () => {
 	assert.ok(formatted.markdown.length <= QQ_MAX_REPLY_CHUNKS);
 	assert.ok(formatted.markdown.length > 1, "应被分块");
 	for (const chunk of formatted.markdown) {
-		assert.ok(bytes(chunk) <= QQ_MARKDOWN_CHUNK_BYTES, `块超限：${bytes(chunk)}`);
+		assert.ok(
+			bytes(chunk) <= QQ_MARKDOWN_CHUNK_BYTES,
+			`块超限：${bytes(chunk)}`,
+		);
 	}
 	assert.match(formatted.markdown[0] ?? "", /回答（1\/\d+）/);
 });
@@ -38,7 +41,11 @@ test("formatQQReply：长回复 ≤4 块 + 编号 + UTF-8 字节预算", () => {
 test("formatQQReply：降级 plain 与 markdown 块数一致（msg_seq 对齐）", () => {
 	const long = "## 标题\n\n" + "内容段落。".repeat(1500);
 	const formatted = formatQQReply(long, "auto");
-	assert.equal(formatted.markdown.length, formatted.plain.length, "降级必须逐块对齐");
+	assert.equal(
+		formatted.markdown.length,
+		formatted.plain.length,
+		"降级必须逐块对齐",
+	);
 	assert.equal(formatted.plain.length, formatted.markdown.length);
 	// plain 模式直接返回 plain
 	const plainOnly = formatQQReply(long, "plain");
@@ -46,7 +53,13 @@ test("formatQQReply：降级 plain 与 markdown 块数一致（msg_seq 对齐）
 });
 
 test("chunkMarkdown：代码围栏不从中截断", () => {
-	const text = ["```python", "print('hello')", "print('world')", "```", "后续段落。".repeat(100)].join("\n");
+	const text = [
+		"```python",
+		"print('hello')",
+		"print('world')",
+		"```",
+		"后续段落。".repeat(100),
+	].join("\n");
 	const chunks = chunkMarkdown(text, 200, 4);
 	for (const chunk of chunks) {
 		const open = (chunk.match(/```/g) ?? []).length;
@@ -64,7 +77,8 @@ test("normalizeMarkdown：CRLF 归一、控制字符清理、宽表格转列表"
 });
 
 test("markdownToPlain：标题/粗体/代码/引用/链接/列表降级", () => {
-	const md = "## 标题\n\n**粗体** 和 `code`\n\n> 引用内容\n\n[链接](https://example.com)\n\n- 项1\n- 项2";
+	const md =
+		"## 标题\n\n**粗体** 和 `code`\n\n> 引用内容\n\n[链接](https://example.com)\n\n- 项1\n- 项2";
 	const plain = markdownToPlain(md);
 	assert.ok(!plain.includes("##"), "标题标记剥离");
 	assert.ok(!plain.includes("**"), "粗体剥离");

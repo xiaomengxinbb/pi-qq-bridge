@@ -179,7 +179,6 @@ export class QQAgentSession {
 	private cwd = "";
 	private sessionDir?: string;
 	private persistent = true;
-	private restore: "recent" | "new" = "recent";
 	private outboundDelivery?: QQOutboundDeliveryContext;
 
 	isReady(): boolean {
@@ -198,7 +197,6 @@ export class QQAgentSession {
 		this.cwd = cwd;
 		this.sessionDir = options.sessionDir;
 		this.persistent = options.persistent !== false;
-		this.restore = options.restore ?? "recent";
 		const sdk = (await loadSdk()) as {
 			SettingsManager: {
 				create(
@@ -288,6 +286,7 @@ export class QQAgentSession {
 					services,
 					sessionManager: manager,
 					sessionStartEvent,
+					customTools: [this.createOutboundMediaTool(sdk)],
 				})),
 				services,
 			};
@@ -304,6 +303,50 @@ export class QQAgentSession {
 			return;
 		}
 		this.runtime = runtime;
+	}
+
+	/** 绑定当前回合的出站媒体交付上下文（回合结束由调用方 close） */
+	bindOutboundDelivery(context?: QQOutboundDeliveryContext): void {
+		this.outboundDelivery = context;
+	}
+
+	// biome-ignore lint/suspicious/noExplicitAny: 动态 SDK
+	private createOutboundMediaTool(sdk: unknown): unknown {
+		const sdkModule = sdk as {
+			defineTool(definition: Record<string, unknown>): unknown;
+		};
+		const qqSession = this;
+		return sdkModule.defineTool({
+			name: "qq_send_local_file",
+			label: "Send Local File to QQ",
+			description:
+				"Send one real local computer file to the QQ conversation that requested the current task. Use this when the QQ user explicitly asks to send/upload/transfer a local image or file. A local path, Markdown image, or URL in the final answer does not send the file. The target QQ user and reply metadata are securely bound by the plugin; provide only the local path.",
+			parameters: Type.Object({
+				path: Type.String({
+					description: "Local file path returned by a tool or explicitly provided by the user",
+				}),
+			}),
+			async execute(_toolCallId: string, params: { path: string }) {
+				const delivery = qqSession.outboundDelivery;
+				if (!delivery) throw new Error("No active QQ delivery context (delivery_context_closed)");
+				const { formatBytes } = await import("./outbound-media.ts");
+				const record = await delivery.sendLocalFile(params.path, "auto");
+				return {
+					content: [
+						{
+							type: "text",
+							text: `QQ API 已确认发送${record.kind === "image" ? "图片" : "文件"} ${record.filename}（${formatBytes(record.bytes)}）。`,
+						},
+					],
+					details: {
+						filename: record.filename,
+						kind: record.kind,
+						bytes: record.bytes,
+						status: record.status,
+					},
+				};
+			},
+		});
 	}
 
 	/** 运行一次 prompt 到完成（调用方负责串行化）。返回最终文本与工具记录。 */

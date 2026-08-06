@@ -221,7 +221,10 @@ export async function startMockQQServer(): Promise<MockQQServer> {
 			});
 			return;
 		}
-		if (req.method === "POST" && /\/v2\/(users|groups)\/[^/]+\/files\/upload_prepare$/.test(url)) {
+		if (
+			req.method === "POST" &&
+			/\/v2\/(users|groups)\/[^/]+\/files\/upload_prepare$/.test(url)
+		) {
 			let raw = "";
 			req.on("data", (chunk) => {
 				raw += chunk.toString();
@@ -236,18 +239,31 @@ export async function startMockQQServer(): Promise<MockQQServer> {
 					part_number: i + 1,
 				}));
 				res.setHeader("Content-Type", "application/json");
-				res.end(JSON.stringify({ file_uuid: "uuid_1", upload_id: "up_1", block_size: blockSize, max_parts: totalParts, urls }));
+				res.end(
+					JSON.stringify({
+						file_uuid: "uuid_1",
+						upload_id: "up_1",
+						block_size: blockSize,
+						max_parts: totalParts,
+						urls,
+					}),
+				);
 			});
 			return;
 		}
-		if (req.method === "POST" && /\/v2\/(users|groups)\/[^/]+\/files\/upload_part_finish$/.test(url)) {
+		if (
+			req.method === "POST" &&
+			/\/v2\/(users|groups)\/[^/]+\/files\/upload_part_finish$/.test(url)
+		) {
 			let raw = "";
 			req.on("data", (chunk) => {
 				raw += chunk.toString();
 			});
 			req.on("end", () => {
 				res.setHeader("Content-Type", "application/json");
-				res.end(JSON.stringify({ file_info: `file_info_chunked_${partPuts.length}` }));
+				res.end(
+					JSON.stringify({ file_info: `file_info_chunked_${partPuts.length}` }),
+				);
 			});
 			return;
 		}
@@ -273,7 +289,12 @@ export async function startMockQQServer(): Promise<MockQQServer> {
 				}
 				uploads.push(url);
 				res.setHeader("Content-Type", "application/json");
-				res.end(JSON.stringify({ file_info: `file_info_${uploads.length}`, ttl: 600 }));
+				res.end(
+					JSON.stringify({
+						file_info: `file_info_${uploads.length}`,
+						ttl: 600,
+					}),
+				);
 			});
 			return;
 		}
@@ -326,7 +347,10 @@ export function c2cMessageEvent(overrides: Record<string, unknown> = {}): {
 }
 
 /** 构造一条群 @ 消息事件（M4 测试用） */
-export function groupAtMessageEvent(overrides: Record<string, unknown> = {}): { t: string; d: unknown } {
+export function groupAtMessageEvent(overrides: Record<string, unknown> = {}): {
+	t: string;
+	d: unknown;
+} {
 	return {
 		t: "GROUP_AT_MESSAGE_CREATE",
 		d: {

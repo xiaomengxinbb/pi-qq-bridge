@@ -5,12 +5,17 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { QQRouter } from "../src/router.ts";
-import { makeTestConfig, makeApi, FakeRegistry, msg, type SentMessage } from "./helpers.ts";
+import {
+	makeTestConfig,
+	makeApi,
+	FakeRegistry,
+	msg,
+	type SentMessage,
+} from "./helpers.ts";
 
 test("同对话运行中：新消息走 steer 插嘴（不排队）", async () => {
 	const sent: SentMessage[] = [];
 	const steers: string[] = [];
-	let runResolve: (() => void) | undefined;
 	const registry = new FakeRegistry({
 		text: "最终聚合回复",
 		delayMs: 150, // 模拟长任务
@@ -55,10 +60,16 @@ test("/stop：清 steering 队列并中止运行", async () => {
 		text: "ok",
 		delayMs: 200,
 		streaming: true,
-		onClearPending: () => { cleared += 1; },
-		onAbort: () => { aborted += 1; },
+		onClearPending: () => {
+			cleared += 1;
+		},
+		onAbort: () => {
+			aborted += 1;
+		},
 	});
-	const adminCfg = makeTestConfig({ commands: { ...makeTestConfig().commands, admins: ["user_allowed"] } });
+	const adminCfg = makeTestConfig({
+		commands: { ...makeTestConfig().commands, admins: ["user_allowed"] },
+	});
 	const router = new QQRouter(adminCfg, registry, makeApi(sent));
 	router.handleInbound(msg({ id: "m1", text: "长任务" }));
 	await new Promise((r) => setTimeout(r, 50));

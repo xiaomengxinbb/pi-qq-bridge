@@ -19,7 +19,10 @@ export interface FormattedQQReply {
 	truncated: boolean;
 }
 
-export function formatQQReply(text: string, mode: "auto" | "plain"): FormattedQQReply {
+export function formatQQReply(
+	text: string,
+	mode: "auto" | "plain",
+): FormattedQQReply {
 	const normalized = normalizeMarkdown(text);
 	const source = truncateUtf8(normalized, MAX_SOURCE_BYTES);
 	const markdownChunks = chunkMarkdown(
@@ -47,7 +50,11 @@ export function normalizeMarkdown(value: string): string {
 	return text || "（无文本回复）";
 }
 
-export function chunkMarkdown(text: string, maxBytes: number, maxChunks: number): string[] {
+export function chunkMarkdown(
+	text: string,
+	maxBytes: number,
+	maxChunks: number,
+): string[] {
 	if (utf8Bytes(text) <= maxBytes) return [text];
 	const blocks = attachHeadings(parseMarkdownBlocks(text));
 	const chunks: string[] = [];
@@ -74,11 +81,14 @@ export function chunkMarkdown(text: string, maxBytes: number, maxChunks: number)
 			current = block;
 			continue;
 		}
-		const pieces = block.startsWith("```") ? splitFencedBlock(block, maxBytes) : splitSemantic(block, maxBytes);
+		const pieces = block.startsWith("```")
+			? splitFencedBlock(block, maxBytes)
+			: splitSemantic(block, maxBytes);
 		for (const piece of pieces) {
 			if (chunks.length >= maxChunks) break;
 			if (!current) current = piece;
-			else if (utf8Bytes(`${current}\n\n${piece}`) <= maxBytes) current += `\n\n${piece}`;
+			else if (utf8Bytes(`${current}\n\n${piece}`) <= maxBytes)
+				current += `\n\n${piece}`;
 			else {
 				flush();
 				if (chunks.length < maxChunks) current = piece;
@@ -87,25 +97,45 @@ export function chunkMarkdown(text: string, maxBytes: number, maxChunks: number)
 	}
 	if (chunks.length < maxChunks) flush();
 
-	const representedBytes = chunks.reduce((total, chunk) => total + utf8Bytes(chunk), 0);
+	const representedBytes = chunks.reduce(
+		(total, chunk) => total + utf8Bytes(chunk),
+		0,
+	);
 	if (representedBytes < utf8Bytes(text) && chunks.length) {
-		chunks[chunks.length - 1] = appendWithinBudget(chunks[chunks.length - 1]!, "\n\n> ⚠️ 回复过长，后续内容已省略。", maxBytes);
+		chunks[chunks.length - 1] = appendWithinBudget(
+			chunks[chunks.length - 1]!,
+			"\n\n> ⚠️ 回复过长，后续内容已省略。",
+			maxBytes,
+		);
 	}
 	return chunks.slice(0, maxChunks);
 }
 
-export function chunkPlainText(text: string, maxBytes: number, maxChunks: number): string[] {
+export function chunkPlainText(
+	text: string,
+	maxBytes: number,
+	maxChunks: number,
+): string[] {
 	if (utf8Bytes(text) <= maxBytes) return [text];
 	const pieces = splitSemantic(text, maxBytes);
 	const chunks: string[] = [];
 	for (const piece of pieces) {
 		if (chunks.length >= maxChunks) break;
 		const last = chunks[chunks.length - 1];
-		if (last && utf8Bytes(`${last}\n\n${piece}`) <= maxBytes) chunks[chunks.length - 1] = `${last}\n\n${piece}`;
+		if (last && utf8Bytes(`${last}\n\n${piece}`) <= maxBytes)
+			chunks[chunks.length - 1] = `${last}\n\n${piece}`;
 		else chunks.push(piece);
 	}
-	if (chunks.reduce((total, chunk) => total + utf8Bytes(chunk), 0) < utf8Bytes(text) && chunks.length) {
-		chunks[chunks.length - 1] = appendWithinBudget(chunks[chunks.length - 1]!, "\n\n⚠️ 回复过长，后续内容已省略。", maxBytes);
+	if (
+		chunks.reduce((total, chunk) => total + utf8Bytes(chunk), 0) <
+			utf8Bytes(text) &&
+		chunks.length
+	) {
+		chunks[chunks.length - 1] = appendWithinBudget(
+			chunks[chunks.length - 1]!,
+			"\n\n⚠️ 回复过长，后续内容已省略。",
+			maxBytes,
+		);
 	}
 	return chunks;
 }
@@ -145,11 +175,20 @@ function convertMarkdownTables(text: string): string {
 			output.push(line);
 			continue;
 		}
-		if (!inFence && index + 1 < lines.length && isTableRow(line) && isTableDelimiter(lines[index + 1]!)) {
+		if (
+			!inFence &&
+			index + 1 < lines.length &&
+			isTableRow(line) &&
+			isTableDelimiter(lines[index + 1]!)
+		) {
 			const headers = parseTableRow(line);
 			const rows: string[][] = [];
 			let rowIndex = index + 2;
-			while (rowIndex < lines.length && isTableRow(lines[rowIndex]!) && lines[rowIndex]!.trim()) {
+			while (
+				rowIndex < lines.length &&
+				isTableRow(lines[rowIndex]!) &&
+				lines[rowIndex]!.trim()
+			) {
 				rows.push(parseTableRow(lines[rowIndex]!));
 				rowIndex++;
 			}
@@ -160,7 +199,10 @@ function convertMarkdownTables(text: string): string {
 					output.push(`- **${escapeMarkdownLabel(headers[0]!)}：**${first}`);
 					for (let column = 1; column < headers.length; column++) {
 						const value = row[column] ?? "";
-						if (value) output.push(`  - **${escapeMarkdownLabel(headers[column]!)}：**${value}`);
+						if (value)
+							output.push(
+								`  - **${escapeMarkdownLabel(headers[column]!)}：**${value}`,
+							);
 					}
 				}
 				continue;
@@ -173,16 +215,26 @@ function convertMarkdownTables(text: string): string {
 
 function isTableRow(line: string): boolean {
 	const trimmed = line.trim();
-	return trimmed.includes("|") && (trimmed.startsWith("|") || trimmed.endsWith("|"));
+	return (
+		trimmed.includes("|") && (trimmed.startsWith("|") || trimmed.endsWith("|"))
+	);
 }
 
 function isTableDelimiter(line: string): boolean {
 	const cells = parseTableRow(line);
-	return cells.length >= 2 && cells.every((cell) => /^:?-+:?$/.test(cell.replace(/\s+/g, "")));
+	return (
+		cells.length >= 2 &&
+		cells.every((cell) => /^:?-+:?$/.test(cell.replace(/\s+/g, "")))
+	);
 }
 
 function parseTableRow(line: string): string[] {
-	return line.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((cell) => cell.trim());
+	return line
+		.trim()
+		.replace(/^\|/, "")
+		.replace(/\|$/, "")
+		.split("|")
+		.map((cell) => cell.trim());
 }
 
 function escapeMarkdownLabel(value: string): string {
@@ -193,7 +245,11 @@ function attachHeadings(blocks: string[]): string[] {
 	const result: string[] = [];
 	for (let index = 0; index < blocks.length; index++) {
 		const block = blocks[index]!;
-		if (/^#{1,6}\s+/.test(block) && index + 1 < blocks.length && !blocks[index + 1]!.startsWith("```")) {
+		if (
+			/^#{1,6}\s+/.test(block) &&
+			index + 1 < blocks.length &&
+			!blocks[index + 1]!.startsWith("```")
+		) {
 			result.push(`${block}\n\n${blocks[++index]}`);
 		} else result.push(block);
 	}
@@ -257,8 +313,14 @@ function splitFencedBlock(block: string, maxBytes: number): string[] {
 			current = opening;
 			currentBytes = utf8Bytes(opening);
 			// 单行超限：硬切行内
-			if (utf8Bytes(line) > maxBytes - utf8Bytes(opening) - utf8Bytes(closing)) {
-				const chunks = splitLine(line, maxBytes - utf8Bytes(opening) - utf8Bytes(closing));
+			if (
+				utf8Bytes(line) >
+				maxBytes - utf8Bytes(opening) - utf8Bytes(closing)
+			) {
+				const chunks = splitLine(
+					line,
+					maxBytes - utf8Bytes(opening) - utf8Bytes(closing),
+				);
 				for (const chunk of chunks) {
 					if (pieces.length >= QQ_MAX_REPLY_CHUNKS) break;
 					pieces.push(`${opening}\n${chunk}\n${closing}`);
@@ -313,18 +375,32 @@ function withPartLabels(chunks: string[], markdown: boolean): string[] {
 	if (chunks.length <= 1) return chunks;
 	const label = markdown ? "回答" : "回复";
 	return chunks.map((chunk, index) => {
-		const marker = markdown ? `> 📄 ${label}（${index + 1}/${chunks.length}）\n\n` : `${label}（${index + 1}/${chunks.length}）\n\n`;
+		const marker = markdown
+			? `> 📄 ${label}（${index + 1}/${chunks.length}）\n\n`
+			: `${label}（${index + 1}/${chunks.length}）\n\n`;
 		return `${marker}${chunk}`;
 	});
 }
 
-function appendWithinBudget(chunk: string, suffix: string, maxBytes: number): string {
+function appendWithinBudget(
+	chunk: string,
+	suffix: string,
+	maxBytes: number,
+): string {
 	const remaining = maxBytes - utf8Bytes(chunk);
 	if (remaining <= 0) return chunk;
-	return chunk + (utf8Bytes(suffix) <= remaining ? suffix : suffix.slice(0, Math.max(0, remaining)));
+	return (
+		chunk +
+		(utf8Bytes(suffix) <= remaining
+			? suffix
+			: suffix.slice(0, Math.max(0, remaining)))
+	);
 }
 
-function truncateUtf8(value: string, maxBytes: number): { text: string; truncated: boolean } {
+function truncateUtf8(
+	value: string,
+	maxBytes: number,
+): { text: string; truncated: boolean } {
 	if (utf8Bytes(value) <= maxBytes) return { text: value, truncated: false };
 	let bytes = 0;
 	let index = 0;

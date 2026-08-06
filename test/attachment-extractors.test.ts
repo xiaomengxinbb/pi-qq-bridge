@@ -6,7 +6,12 @@ import assert from "node:assert/strict";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { extractTxt, extractPdf, makeMinimalPdf, AttachmentExtractError } from "../src/attachment-extractors.ts";
+import {
+	extractTxt,
+	extractPdf,
+	makeMinimalPdf,
+	AttachmentExtractError,
+} from "../src/attachment-extractors.ts";
 
 function tmpFile(name: string, bytes: Uint8Array | Buffer): string {
 	const dir = mkdtempSync(join(tmpdir(), "pi-qq-bridge-extract-"));
@@ -25,7 +30,13 @@ function cleanup(path: string): void {
 
 test("extractTxt：UTF-8 与 BOM", async () => {
 	const p1 = tmpFile("a.txt", Buffer.from("你好，世界", "utf8"));
-	const p2 = tmpFile("b.txt", Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from("带 BOM 的文本", "utf8")]));
+	const p2 = tmpFile(
+		"b.txt",
+		Buffer.concat([
+			Buffer.from([0xef, 0xbb, 0xbf]),
+			Buffer.from("带 BOM 的文本", "utf8"),
+		]),
+	);
 	try {
 		assert.equal((await extractTxt(p1, 1000)).text, "你好，世界");
 		assert.equal((await extractTxt(p2, 1000)).text, "带 BOM 的文本");
@@ -45,11 +56,16 @@ test("extractTxt：UTF-16 LE/BE", async () => {
 });
 
 test("extractTxt：非法编码拒绝（invalid_encoding）", async () => {
-	const p = tmpFile("bad.txt", Buffer.from([0xff, 0xfe, 0x00, 0xd8, 0x00, 0x00]));
+	const p = tmpFile(
+		"bad.txt",
+		Buffer.from([0xff, 0xfe, 0x00, 0xd8, 0x00, 0x00]),
+	);
 	try {
 		await assert.rejects(
 			() => extractTxt(p, 1000),
-			(err: unknown) => err instanceof AttachmentExtractError && err.code === "invalid_encoding",
+			(err: unknown) =>
+				err instanceof AttachmentExtractError &&
+				err.code === "invalid_encoding",
 		);
 	} finally {
 		cleanup(p);
@@ -73,7 +89,10 @@ test("extractPdf：带文本层的最小 PDF 提取成功", async () => {
 	const p = tmpFile("min.pdf", makeMinimalPdf("Hello PDF extraction test"));
 	try {
 		const result = await extractPdf(p, 10, 10_000);
-		assert.ok(result.text.includes("Hello PDF extraction test"), `实际: ${result.text}`);
+		assert.ok(
+			result.text.includes("Hello PDF extraction test"),
+			`实际: ${result.text}`,
+		);
 	} finally {
 		cleanup(p);
 	}
@@ -81,15 +100,20 @@ test("extractPdf：带文本层的最小 PDF 提取成功", async () => {
 
 test("extractPdf：无文本层 → pdf_no_text；非 PDF → parse_failed", async () => {
 	const empty = tmpFile("empty.pdf", makeMinimalPdf(""));
-	const garbage = tmpFile("garbage.pdf", Buffer.from("this is not a pdf at all", "utf8"));
+	const garbage = tmpFile(
+		"garbage.pdf",
+		Buffer.from("this is not a pdf at all", "utf8"),
+	);
 	try {
 		await assert.rejects(
 			() => extractPdf(empty, 10, 10_000),
-			(err: unknown) => err instanceof AttachmentExtractError && err.code === "pdf_no_text",
+			(err: unknown) =>
+				err instanceof AttachmentExtractError && err.code === "pdf_no_text",
 		);
 		await assert.rejects(
 			() => extractPdf(garbage, 10, 10_000),
-			(err: unknown) => err instanceof AttachmentExtractError && err.code === "parse_failed",
+			(err: unknown) =>
+				err instanceof AttachmentExtractError && err.code === "parse_failed",
 		);
 	} finally {
 		cleanup(empty);

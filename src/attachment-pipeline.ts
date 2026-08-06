@@ -14,7 +14,11 @@ import {
 	safeOriginalFilename,
 	type DownloadedAttachment,
 } from "./attachment-downloader.ts";
-import { AttachmentExtractError, extractPdf, extractTxt } from "./attachment-extractors.ts";
+import {
+	AttachmentExtractError,
+	extractPdf,
+	extractTxt,
+} from "./attachment-extractors.ts";
 import { SttError, transcribeOpenAI } from "./stt.ts";
 import { resolveSdkEntry } from "./qq-session.ts";
 import type { PiQQBridgeConfig } from "./config.ts";
@@ -29,7 +33,11 @@ import type {
 
 /** 下载器结构接口（测试注入 fake） */
 export interface AttachmentDownloaderLike {
-	download(url: string, maxBytes: number, remainingTotalBytes: number): Promise<DownloadedAttachment>;
+	download(
+		url: string,
+		maxBytes: number,
+		remainingTotalBytes: number,
+	): Promise<DownloadedAttachment>;
 	readonly downloadedBytes: number;
 	cleanup(): Promise<void>;
 }
@@ -46,20 +54,43 @@ export interface AttachmentPipelineOptions {
 }
 
 export interface AttachmentPipelineCallbacks {
-	onStart?(index: number, total: number, kind: QQAttachmentKind, filename: string): void;
-	onProgress?(index: number, total: number, kind: QQAttachmentKind, filename: string, bytes: number): void;
-	onEnd?(index: number, total: number, resource: PreparedAttachment, bytes?: number): void;
+	onStart?(
+		index: number,
+		total: number,
+		kind: QQAttachmentKind,
+		filename: string,
+	): void;
+	onProgress?(
+		index: number,
+		total: number,
+		kind: QQAttachmentKind,
+		filename: string,
+		bytes: number,
+	): void;
+	onEnd?(
+		index: number,
+		total: number,
+		resource: PreparedAttachment,
+		bytes?: number,
+	): void;
 }
 
 export class AttachmentPipeline {
 	private readonly config: PiQQBridgeConfig;
 	private readonly runtimeId: string;
-	private readonly downloaderFactory: NonNullable<AttachmentPipelineOptions["downloaderFactory"]>;
+	private readonly downloaderFactory: NonNullable<
+		AttachmentPipelineOptions["downloaderFactory"]
+	>;
 
-	constructor(config: PiQQBridgeConfig, runtimeId: string, options: AttachmentPipelineOptions = {}) {
+	constructor(
+		config: PiQQBridgeConfig,
+		runtimeId: string,
+		options: AttachmentPipelineOptions = {},
+	) {
 		this.config = config;
 		this.runtimeId = runtimeId;
-		this.downloaderFactory = options.downloaderFactory ?? ((opts) => new AttachmentDownloader(opts));
+		this.downloaderFactory =
+			options.downloaderFactory ?? ((opts) => new AttachmentDownloader(opts));
 	}
 
 	async prepare(
@@ -80,18 +111,31 @@ export class AttachmentPipeline {
 			messageId: msg.id,
 			timeoutMs: media.downloadTimeoutMs,
 			signal,
-			onProgress: (bytes) => callbacks.onProgress?.(accepted.length, msg.attachments.length, activeKind, activeFilename, bytes),
+			onProgress: (bytes) =>
+				callbacks.onProgress?.(
+					accepted.length,
+					msg.attachments.length,
+					activeKind,
+					activeFilename,
+					bytes,
+				),
 		});
 
 		try {
 			if (!media.enabled) {
 				for (let index = 0; index < msg.attachments.length; index++) {
-					const resource = rejected(msg.attachments[index]!, "media_disabled", "附件处理已关闭");
+					const resource = rejected(
+						msg.attachments[index]!,
+						"media_disabled",
+						"附件处理已关闭",
+					);
 					resources.push(resource);
 					fragments.push(failureFragment(resource));
 					callbacks.onEnd?.(index + 1, msg.attachments.length, resource);
 				}
-				return makePrepared(msg, images, resources, fragments, () => downloader.cleanup());
+				return makePrepared(msg, images, resources, fragments, () =>
+					downloader.cleanup(),
+				);
 			}
 
 			for (let index = 0; index < accepted.length; index++) {
@@ -100,7 +144,12 @@ export class AttachmentPipeline {
 				const kind = classifyAttachment(attachment);
 				activeKind = kind;
 				activeFilename = safeOriginalFilename(attachment.filename);
-				callbacks.onStart?.(index + 1, msg.attachments.length, kind, activeFilename);
+				callbacks.onStart?.(
+					index + 1,
+					msg.attachments.length,
+					kind,
+					activeFilename,
+				);
 				const resource = await this.prepareOne(
 					attachment,
 					kind,
@@ -111,16 +160,32 @@ export class AttachmentPipeline {
 					fragments,
 				);
 				resources.push(resource);
-				callbacks.onEnd?.(index + 1, msg.attachments.length, resource, downloader.downloadedBytes);
+				callbacks.onEnd?.(
+					index + 1,
+					msg.attachments.length,
+					resource,
+					downloader.downloadedBytes,
+				);
 			}
 
 			for (const attachment of overflow) {
-				const resource = rejected(attachment, "attachment_count_limit", `每条消息最多处理 ${media.maxAttachments} 个附件`);
+				const resource = rejected(
+					attachment,
+					"attachment_count_limit",
+					`每条消息最多处理 ${media.maxAttachments} 个附件`,
+				);
 				resources.push(resource);
 				fragments.push(failureFragment(resource));
-				callbacks.onEnd?.(resources.length, msg.attachments.length, resource, downloader.downloadedBytes);
+				callbacks.onEnd?.(
+					resources.length,
+					msg.attachments.length,
+					resource,
+					downloader.downloadedBytes,
+				);
 			}
-			return makePrepared(msg, images, resources, fragments, () => downloader.cleanup());
+			return makePrepared(msg, images, resources, fragments, () =>
+				downloader.cleanup(),
+			);
 		} catch (err) {
 			await downloader.cleanup();
 			throw err;
@@ -152,39 +217,94 @@ export class AttachmentPipeline {
 								: kind === "doc"
 									? media.documents.maxDocBytes
 									: 0;
-			if (maxBytes <= 0) return rejected(attachment, "size_limit", "该附件类型暂不支持");
+			if (maxBytes <= 0)
+				return rejected(attachment, "size_limit", "该附件类型暂不支持");
 
-			const downloaded = await downloader.download(attachment.url, maxBytes, remainingBytes);
+			const downloaded = await downloader.download(
+				attachment.url,
+				maxBytes,
+				remainingBytes,
+			);
 			// 分类一致性校验（P1-4：mime_mismatch）
 			const downloadedKind = downloaded.media.kind;
-			if (downloadedKind !== kind && !(downloadedKind === "unknown" || kind === "unknown")) {
-				const resource = rejected(attachment, "mime_mismatch", `附件类型与声明不符（声明 ${kind}，实际 ${downloadedKind}）`);
+			if (
+				downloadedKind !== kind &&
+				!(downloadedKind === "unknown" || kind === "unknown")
+			) {
+				const resource = rejected(
+					attachment,
+					"mime_mismatch",
+					`附件类型与声明不符（声明 ${kind}，实际 ${downloadedKind}）`,
+				);
 				fragments.push(failureFragment(resource));
 				return resource;
 			}
-			const effectiveKind = downloadedKind === "unknown" ? kind : downloadedKind;
+			const effectiveKind =
+				downloadedKind === "unknown" ? kind : downloadedKind;
 
 			switch (effectiveKind) {
 				case "image":
-					return await this.prepareImage(attachment, filename, downloaded, images, fragments, signal);
+					return await this.prepareImage(
+						attachment,
+						filename,
+						downloaded,
+						images,
+						fragments,
+						signal,
+					);
 				case "audio":
-					return await this.prepareAudio(attachment, filename, downloaded, fragments, signal);
+					return await this.prepareAudio(
+						attachment,
+						filename,
+						downloaded,
+						fragments,
+						signal,
+					);
 				case "text": {
-					const extracted = await extractTxt(downloaded.path, media.documents.maxExtractedChars);
-					const resource = ready(attachment, "text", filename, extracted.text, undefined, downloaded.path);
+					const extracted = await extractTxt(
+						downloaded.path,
+						media.documents.maxExtractedChars,
+					);
+					const resource = ready(
+						attachment,
+						"text",
+						filename,
+						extracted.text,
+						undefined,
+						downloaded.path,
+					);
 					fragments.push(successFragment(resource));
 					return resource;
 				}
 				case "pdf": {
-					const extracted = await extractPdf(downloaded.path, media.documents.maxPdfPages, media.documents.maxExtractedChars);
-					const resource = ready(attachment, "pdf", filename, extracted.text, undefined, downloaded.path);
+					const extracted = await extractPdf(
+						downloaded.path,
+						media.documents.maxPdfPages,
+						media.documents.maxExtractedChars,
+					);
+					const resource = ready(
+						attachment,
+						"pdf",
+						filename,
+						extracted.text,
+						undefined,
+						downloaded.path,
+					);
 					fragments.push(successFragment(resource));
 					return resource;
 				}
 				case "doc":
-					return rejected(attachment, "parse_failed", "DOC 暂不支持提取正文（不会把二进制当文本）");
+					return rejected(
+						attachment,
+						"parse_failed",
+						"DOC 暂不支持提取正文（不会把二进制当文本）",
+					);
 				default:
-					return rejected(attachment, "parse_failed", "不支持的附件类型（压缩包/视频等不会自动解压或执行）");
+					return rejected(
+						attachment,
+						"parse_failed",
+						"不支持的附件类型（压缩包/视频等不会自动解压或执行）",
+					);
 			}
 		} catch (err) {
 			const resource = errorToRejected(attachment, filename, err);
@@ -203,18 +323,39 @@ export class AttachmentPipeline {
 	): Promise<PreparedAttachment> {
 		try {
 			const { resizeImage } = (await loadSdkForResize()) as {
-				resizeImage(input: Uint8Array, mimeType: string): Promise<{ data: string; mimeType: string } | null>;
+				resizeImage(
+					input: Uint8Array,
+					mimeType: string,
+				): Promise<{ data: string; mimeType: string } | null>;
 			};
 			const bytes = await readFile(downloaded.path);
 			const resized = await resizeImage(bytes, downloaded.media.mimeType);
-			if (!resized) return rejected(attachment, "parse_failed", "图片处理失败（可能已损坏）");
+			if (!resized)
+				return rejected(
+					attachment,
+					"parse_failed",
+					"图片处理失败（可能已损坏）",
+				);
 			const image: QQImageContent = {
 				type: "image",
-				source: { type: "base64", mediaType: resized.mimeType, data: resized.data },
+				source: {
+					type: "base64",
+					mediaType: resized.mimeType,
+					data: resized.data,
+				},
 			};
 			images.push(image);
-			const resource = ready(attachment, "image", filename, undefined, image, downloaded.path);
-			fragments.push(`<image index="${images.length}" name="${escapeXml(filename)}" mime="${escapeXml(resized.mimeType)}" />`);
+			const resource = ready(
+				attachment,
+				"image",
+				filename,
+				undefined,
+				image,
+				downloaded.path,
+			);
+			fragments.push(
+				`<image index="${images.length}" name="${escapeXml(filename)}" mime="${escapeXml(resized.mimeType)}" />`,
+			);
 			return resource;
 		} catch (err) {
 			if (signal.aborted) throw err;
@@ -235,18 +376,41 @@ export class AttachmentPipeline {
 		try {
 			// 优先 QQ ASR 文本
 			if (voice.preferQQAsr && attachment.asrReferText) {
-				const resource = ready(attachment, "audio", filename, attachment.asrReferText, undefined, downloaded.path);
+				const resource = ready(
+					attachment,
+					"audio",
+					filename,
+					attachment.asrReferText,
+					undefined,
+					downloaded.path,
+				);
 				fragments.push(successFragment(resource));
 				return resource;
 			}
 			const sttConfig = voice.stt;
-			if (!sttConfig?.baseUrl) return rejected(attachment, "stt_not_configured", "未配置 STT，语音无转写文本");
+			if (!sttConfig?.baseUrl)
+				return rejected(
+					attachment,
+					"stt_not_configured",
+					"未配置 STT，语音无转写文本",
+				);
 			const transcript = await transcribeOpenAI(
-				{ path: downloaded.path, filename, mimeType: downloaded.media.mimeType },
+				{
+					path: downloaded.path,
+					filename,
+					mimeType: downloaded.media.mimeType,
+				},
 				sttConfig,
 				signal,
 			);
-			const resource = ready(attachment, "audio", filename, transcript, undefined, downloaded.path);
+			const resource = ready(
+				attachment,
+				"audio",
+				filename,
+				transcript,
+				undefined,
+				downloaded.path,
+			);
 			fragments.push(successFragment(resource));
 			return resource;
 		} catch (err) {
@@ -272,10 +436,14 @@ function makePrepared(
 	fragments: string[],
 	cleanup: () => Promise<void>,
 ): PreparedQQMessage {
-	const correlationId = createHash("sha256").update(`pi-qq-bridge-input\0${msg.id}`).digest("hex").slice(0, 24);
-	const header = msg.type === "private"
-		? `[QQ private user=${msg.userOpenId} message=${msg.id} ref=${correlationId}]`
-		: `[QQ group=${msg.groupOpenId} user=${msg.userOpenId} message=${msg.id} ref=${correlationId}]`;
+	const correlationId = createHash("sha256")
+		.update(`pi-qq-bridge-input\0${msg.id}`)
+		.digest("hex")
+		.slice(0, 24);
+	const header =
+		msg.type === "private"
+			? `[QQ private user=${msg.userOpenId} message=${msg.id} ref=${correlationId}]`
+			: `[QQ group=${msg.groupOpenId} user=${msg.userOpenId} message=${msg.id} ref=${correlationId}]`;
 	const parts = [header];
 	if (msg.text.trim()) parts.push(msg.text.trim());
 	if (fragments.length) {
@@ -298,7 +466,11 @@ function ready(
 	return { attachment, kind, status: "ready", text, image, path, filename };
 }
 
-function rejected(attachment: QQAttachment, errorCode: string, errorMessage: string): PreparedAttachment {
+function rejected(
+	attachment: QQAttachment,
+	errorCode: string,
+	errorMessage: string,
+): PreparedAttachment {
 	return {
 		attachment,
 		kind: classifyAttachment(attachment),
@@ -309,12 +481,23 @@ function rejected(attachment: QQAttachment, errorCode: string, errorMessage: str
 	};
 }
 
-function errorToRejected(attachment: QQAttachment, filename: string, err: unknown): PreparedAttachment {
-	if (err instanceof AttachmentDownloadError || err instanceof AttachmentExtractError || err instanceof SttError) {
+function errorToRejected(
+	attachment: QQAttachment,
+	filename: string,
+	err: unknown,
+): PreparedAttachment {
+	if (
+		err instanceof AttachmentDownloadError ||
+		err instanceof AttachmentExtractError ||
+		err instanceof SttError
+	) {
 		return { ...rejected(attachment, err.code, err.message), filename };
 	}
 	const message = err instanceof Error ? err.message : String(err);
-	return { ...rejected(attachment, "parse_failed", message.slice(0, 200)), filename };
+	return {
+		...rejected(attachment, "parse_failed", message.slice(0, 200)),
+		filename,
+	};
 }
 
 function failureFragment(resource: PreparedAttachment): string {
@@ -327,21 +510,33 @@ function successFragment(resource: PreparedAttachment): string {
 }
 
 function escapeXml(value: string): string {
-	return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+	return value
+		.replace(/&/g, "&amp;")
+		.replace(/</g, "&lt;")
+		.replace(/>/g, "&gt;")
+		.replace(/"/g, "&quot;");
 }
 
 /** 检查是否全部失败（无可用的 agent 输入） */
-export function hasUsableAgentInput(msg: QQInboundMessage, resources: PreparedAttachment[]): boolean {
+export function hasUsableAgentInput(
+	msg: QQInboundMessage,
+	resources: PreparedAttachment[],
+): boolean {
 	if (msg.text.trim()) return true;
 	return resources.some((r) => r.status === "ready");
 }
 
-export function formatAttachmentFailures(resources: PreparedAttachment[]): string {
+export function formatAttachmentFailures(
+	resources: PreparedAttachment[],
+): string {
 	const failures = resources.filter((r) => r.status === "rejected");
 	if (!failures.length) return "";
 	return [
 		"## 部分附件未处理",
 		"",
-		...failures.map((r) => `- **${r.filename}**：${r.errorMessage ?? r.errorCode ?? "处理失败"}`),
+		...failures.map(
+			(r) =>
+				`- **${r.filename}**：${r.errorMessage ?? r.errorCode ?? "处理失败"}`,
+		),
 	].join("\n");
 }

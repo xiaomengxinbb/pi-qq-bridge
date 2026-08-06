@@ -321,7 +321,10 @@ export class QQGateway {
 		)
 			return;
 		const isGroup = t === "GROUP_AT_MESSAGE_CREATE";
-		const groupOpenId = isGroup && typeof data.group_openid === "string" ? data.group_openid : undefined;
+		const groupOpenId =
+			isGroup && typeof data.group_openid === "string"
+				? data.group_openid
+				: undefined;
 		if (isGroup && !groupOpenId) return;
 		const msg: QQInboundMessage = {
 			id: data.id,
@@ -357,7 +360,10 @@ export class QQGateway {
 		this.heartbeatTimer = setInterval(() => {
 			if (!this.ws) return;
 			// 假死检测：上次心跳未确认且超时 → 主动重连（M7 加固）
-			if (this.heartbeatAckPending && Date.now() - this.lastHeartbeatAt > this.heartbeatAckTimeoutMs) {
+			if (
+				this.heartbeatAckPending &&
+				Date.now() - this.lastHeartbeatAt > this.heartbeatAckTimeoutMs
+			) {
 				this.setState("connecting", "心跳超时，主动重连");
 				this.closeSocket();
 				this.scheduleReconnect("heartbeat timeout");

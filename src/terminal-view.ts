@@ -40,7 +40,9 @@ export class TerminalView {
 		if (!this.attached) return;
 		switch (event.kind) {
 			case "queued":
-				this.push(`⏳ 入队：${truncate(event.messageId, 12)}（队列 ${event.queueSize}）`);
+				this.push(
+					`⏳ 入队：${truncate(event.messageId, 12)}（队列 ${event.queueSize}）`,
+				);
 				break;
 			case "run_start":
 				this.push(`▶️ 开始处理：${truncate(event.messageId, 12)}`);
@@ -52,7 +54,9 @@ export class TerminalView {
 				this.push(`📤 回复(${event.msgSeq})：${truncate(event.content, 40)}`);
 				break;
 			case "access_request":
-				this.push(`🔐 访问申请：${truncate(event.userOpenId, 16)} 码 ${event.code}`);
+				this.push(
+					`🔐 访问申请：${truncate(event.userOpenId, 16)} 码 ${event.code}`,
+				);
 				break;
 			case "command":
 				this.push(`⚙️ 命令：/${event.name}`);

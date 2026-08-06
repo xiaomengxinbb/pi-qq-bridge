@@ -39,11 +39,9 @@ export class QQApi {
 	private readonly base: string;
 
 	private readonly auth: QQAuth;
-	private readonly options: QQApiOptions;
 
 	constructor(auth: QQAuth, options: QQApiOptions) {
 		this.auth = auth;
-		this.options = options;
 		this.base = options.apiBase ?? (options.sandbox ? SANDBOX_BASE : PROD_BASE);
 	}
 
@@ -95,6 +93,7 @@ export class QQApi {
 			{ file_type: fileType, file_data: fileData, srv_send_msg: false },
 			timeoutMs,
 			"media upload",
+			signal,
 		);
 		if (typeof body.file_info !== "string" || !body.file_info) {
 			throw new QQApiError("media upload response missing file_info", 502, undefined, true);

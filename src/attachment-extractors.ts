@@ -23,10 +23,18 @@ export interface ExtractedText {
 	pages?: number;
 }
 
-export async function extractTxt(path: string, maxChars: number): Promise<ExtractedText> {
+export async function extractTxt(
+	path: string,
+	maxChars: number,
+): Promise<ExtractedText> {
 	const bytes = await readFile(path);
 	let text: string;
-	if (bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) {
+	if (
+		bytes.length >= 3 &&
+		bytes[0] === 0xef &&
+		bytes[1] === 0xbb &&
+		bytes[2] === 0xbf
+	) {
 		text = new TextDecoder("utf-8", { fatal: true }).decode(bytes.subarray(3));
 	} else if (bytes.length >= 2 && bytes[0] === 0xff && bytes[1] === 0xfe) {
 		text = decodeUtf16(bytes.subarray(2), true);
@@ -36,29 +44,48 @@ export async function extractTxt(path: string, maxChars: number): Promise<Extrac
 		try {
 			text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
 		} catch {
-			throw new AttachmentExtractError("invalid_encoding", "TXT 不是有效的 UTF-8/UTF-16 文本");
+			throw new AttachmentExtractError(
+				"invalid_encoding",
+				"TXT 不是有效的 UTF-8/UTF-16 文本",
+			);
 		}
 	}
 	return truncateText(sanitizeExtractedText(text), maxChars);
 }
 
-export async function extractPdf(path: string, maxPages: number, maxChars: number): Promise<ExtractedText> {
+export async function extractPdf(
+	path: string,
+	maxPages: number,
+	maxChars: number,
+): Promise<ExtractedText> {
 	const bytes = await readFile(path);
 	let pdf: Awaited<ReturnType<typeof getDocumentProxy>> | undefined;
 	try {
 		pdf = await getDocumentProxy(new Uint8Array(bytes));
 		if (pdf.numPages > maxPages) {
-			throw new AttachmentExtractError("page_limit", `PDF 页数超过限制（最多 ${maxPages} 页）`);
+			throw new AttachmentExtractError(
+				"page_limit",
+				`PDF 页数超过限制（最多 ${maxPages} 页）`,
+			);
 		}
 		const result = await extractText(pdf, { mergePages: true });
 		const text = sanitizeExtractedText(result.text);
-		if (!text.trim()) throw new AttachmentExtractError("pdf_no_text", "PDF 没有可提取的文本层；当前版本不支持 OCR");
+		if (!text.trim())
+			throw new AttachmentExtractError(
+				"pdf_no_text",
+				"PDF 没有可提取的文本层；当前版本不支持 OCR",
+			);
 		return { ...truncateText(text, maxChars), pages: result.totalPages };
 	} catch (err) {
 		if (err instanceof AttachmentExtractError) throw err;
-		throw new AttachmentExtractError("parse_failed", `PDF 解析失败：${safeError(err)}`);
+		throw new AttachmentExtractError(
+			"parse_failed",
+			`PDF 解析失败：${safeError(err)}`,
+		);
 	} finally {
-		const proxy = pdf as unknown as { destroy?: () => Promise<void> } | undefined;
+		const proxy = pdf as unknown as
+			| { destroy?: () => Promise<void> }
+			| undefined;
 		if (proxy?.destroy) await proxy.destroy().catch(() => undefined);
 	}
 }
@@ -85,12 +112,18 @@ function decodeUtf16(bytes: Uint8Array, littleEndian: boolean): string {
 	try {
 		return new TextDecoder("utf-16le", { fatal: true }).decode(swapped);
 	} catch {
-		throw new AttachmentExtractError("invalid_encoding", "TXT 不是有效的 UTF-8/UTF-16 文本");
+		throw new AttachmentExtractError(
+			"invalid_encoding",
+			"TXT 不是有效的 UTF-8/UTF-16 文本",
+		);
 	}
 }
 
 function sanitizeExtractedText(text: string): string {
-	return text.replace(/\u0000/g, "").replace(/\r\n?/g, "\n").trim();
+	return text
+		.replace(/\u0000/g, "")
+		.replace(/\r\n?/g, "\n")
+		.trim();
 }
 
 function safeError(err: unknown): string {
@@ -100,7 +133,10 @@ function safeError(err: unknown): string {
 
 /** 最小可用 PDF（含文本层），用于测试/无 unpdf 依赖时的兜底验证 */
 export function makeMinimalPdf(text: string): Uint8Array {
-	const escaped = text.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
+	const escaped = text
+		.replace(/\\/g, "\\\\")
+		.replace(/\(/g, "\\(")
+		.replace(/\)/g, "\\)");
 	const content = `BT /F1 12 Tf 72 720 Td (${escaped}) Tj ET`;
 	const objects = [
 		"1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj",
@@ -109,6 +145,7 @@ export function makeMinimalPdf(text: string): Uint8Array {
 		`4 0 obj << /Length ${content.length} >> stream\n${content}\nendstream endobj`,
 		"5 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj",
 	];
-	const body = objects.join("\n") + "\ntrailer << /Root 1 0 R /Size 5 >>\n%%EOF";
+	const body =
+		objects.join("\n") + "\ntrailer << /Root 1 0 R /Size 5 >>\n%%EOF";
 	return new TextEncoder().encode(`%PDF-1.4\n${body}`);
 }

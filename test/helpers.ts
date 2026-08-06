@@ -35,7 +35,12 @@ export interface SentMessage {
 }
 
 export function makeApi(sent: SentMessage[], failWith?: Error): QQApi {
-	const push = (target: QQReplyTarget, content: string, msgSeq: number, keyboard?: unknown): void => {
+	const push = (
+		target: QQReplyTarget,
+		content: string,
+		msgSeq: number,
+		keyboard?: unknown,
+	): void => {
 		if (failWith) throw failWith;
 		sent.push({ target, content, msgSeq, keyboard });
 	};
@@ -196,20 +201,21 @@ export class FakeSession implements QQSessionLike {
 export class FakeRegistry implements ConversationRegistryLike {
 	sessions = new Map<string, FakeSession>();
 	created: string[] = [];
-	currentWorkspace: { name: string; path: string } = { name: "default", path: process.cwd() };
+	currentWorkspace: { name: string; path: string } = {
+		name: "default",
+		path: process.cwd(),
+	};
 
 	async setWorkspace(name: string, path: string): Promise<void> {
 		this.currentWorkspace = { name, path };
 		this.sessions.clear();
 	}
-	private readonly sessionOpts: FakeSessionOpts;
 	private readonly sessionFactory: (key: string) => FakeSession;
 
 	constructor(
 		sessionOpts: FakeSessionOpts = {},
 		sessionFactory?: (key: string) => FakeSession,
 	) {
-		this.sessionOpts = sessionOpts;
 		this.sessionFactory =
 			sessionFactory ?? (() => new FakeSession(sessionOpts));
 	}

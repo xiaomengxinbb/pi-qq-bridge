@@ -13,7 +13,6 @@ import type { PiQQBridgeConfig } from "./config.ts";
 import {
 	CommandStateMachine,
 	authorizeQQCommand,
-	isMutatingQQCommand,
 } from "./command-controller.ts";
 import { parseQQCommand, type ParsedQQCommand } from "./command-parser.ts";
 import {
@@ -28,11 +27,14 @@ import {
 	formatAttachmentFailures,
 	hasUsableAgentInput,
 } from "./attachment-pipeline.ts";
-import { type WorkspaceRegistry, WorkspaceError } from "./workspace-registry.ts";
+import { type WorkspaceRegistry } from "./workspace-registry.ts";
 import { QQOutboundDeliveryContext } from "./outbound-media.ts";
 import { formatQQReply } from "./reply-formatter.ts";
 import type { QQInboundMessage, QQReplyTarget } from "./types.ts";
-import type { QQRunResult, QQSessionInfo, QQSessionLike } from "./qq-session.ts";
+import type {
+	QQSessionInfo,
+	QQSessionLike,
+} from "./qq-session.ts";
 
 /** 注册表结构接口（ConversationRegistry 结构兼容） */
 export interface ConversationRegistryLike {
@@ -88,7 +90,9 @@ export class QQRouter {
 	private activeSession: QQSessionLike | undefined;
 	private activeAbort: AbortController | undefined;
 	/** M7：当前运行中的对话（同对话消息可 steering 插嘴） */
-	private activeConversation: { key: string; session: QQSessionLike; accepting: boolean } | undefined;
+	private activeConversation:
+		| { key: string; session: QQSessionLike; accepting: boolean }
+		| undefined;
 	private readonly replyBudgetLimit: number;
 	private readonly maxQueueSize: number;
 	private readonly stateMachine: CommandStateMachine;
@@ -103,7 +107,6 @@ export class QQRouter {
 	private readonly config: PiQQBridgeConfig;
 	private readonly registry: ConversationRegistryLike;
 	private readonly api: QQApi;
-	private readonly options: QQRouterOptions;
 
 	constructor(
 		config: PiQQBridgeConfig,
@@ -114,7 +117,6 @@ export class QQRouter {
 		this.config = config;
 		this.registry = registry;
 		this.api = api;
-		this.options = options;
 		this.replyBudgetLimit = options.replyBudgetLimit ?? 4;
 		this.dedupe = new MessageDedupe(options.dedupeTtlMs);
 		this.maxQueueSize = config.maxQueueSize;
@@ -622,10 +624,16 @@ export class QQRouter {
 		);
 	}
 
-	private async handleWorkspaceCommand(msg: QQInboundMessage, args: string[]): Promise<void> {
+	private async handleWorkspaceCommand(
+		msg: QQInboundMessage,
+		args: string[],
+	): Promise<void> {
 		const registry = this.workspaceRegistry;
 		if (!registry) {
-			await this.replyToQQ(msg, "## 工作区不可用\n\n当前未配置 workspaces（配置文件中添加 workspaces 数组）。");
+			await this.replyToQQ(
+				msg,
+				"## 工作区不可用\n\n当前未配置 workspaces（配置文件中添加 workspaces 数组）。",
+			);
 			return;
 		}
 		const conversation = this.registry;
@@ -637,7 +645,12 @@ export class QQRouter {
 				"",
 				`当前：**${current?.name ?? "default"}**（${current?.path ?? "?"}）`,
 				"",
-				...registry.list().map((w) => `- \`${w.name}\`  ${w.path}${w.description ? `（${w.description}）` : ""}`),
+				...registry
+					.list()
+					.map(
+						(w) =>
+							`- \`${w.name}\`  ${w.path}${w.description ? `（${w.description}）` : ""}`,
+					),
 				"",
 				"发送 /workspace <名称> 切换（需要管理员权限）。",
 			];
@@ -646,14 +659,20 @@ export class QQRouter {
 		}
 		// /workspace add <name> <path> / remove <name>：管理命令（QQ 侧 admin）
 		if (args[0] === "add" || args[0] === "remove") {
-			await this.replyToQQ(msg, "## 命令未执行\n\n`/workspace add|remove` 请在主机终端执行（本地管理员操作）。");
+			await this.replyToQQ(
+				msg,
+				"## 命令未执行\n\n`/workspace add|remove` 请在主机终端执行（本地管理员操作）。",
+			);
 			return;
 		}
 		// /workspace <name> → 切换（mutating，已由授权矩阵校验 admin）
 		const name = args[0]!;
 		const resolved = registry.resolve(name);
 		if (conversation.currentWorkspace?.name === name) {
-			await this.replyToQQ(msg, `## 工作区\n\n已在 **${name}**（${resolved.path}）。`);
+			await this.replyToQQ(
+				msg,
+				`## 工作区\n\n已在 **${name}**（${resolved.path}）。`,
+			);
 			return;
 		}
 		await conversation.setWorkspace?.(resolved.name, resolved.path);
@@ -685,7 +704,7 @@ export class QQRouter {
 		const lines = [
 			"## QQ 命令",
 			"",
-			...Object.entries(help).map(([name, text]) => `- ${text}`),
+			...Object.entries(help).map(([, text]) => `- ${text}`),
 			"",
 			"普通文本会作为任务发给 Pi。管理命令需要管理员权限。",
 		];
@@ -773,13 +792,19 @@ export class QQRouter {
 			let images: import("./types.ts").QQImageContent[] = [];
 			if (msg.attachments.length > 0 && this.attachmentPipeline) {
 				const controller = new AbortController();
-				const prepared = await this.attachmentPipeline.prepare(msg, controller.signal);
+				const prepared = await this.attachmentPipeline.prepare(
+					msg,
+					controller.signal,
+				);
 				if (hasUsableAgentInput(msg, prepared.resources)) {
 					prompt = prepared.prompt;
 					images = prepared.images;
 				} else {
 					await prepared.cleanup();
-					await this.replyToQQ(msg, formatAttachmentFailures(prepared.resources));
+					await this.replyToQQ(
+						msg,
+						formatAttachmentFailures(prepared.resources),
+					);
 					return;
 				}
 				await prepared.cleanup();
@@ -787,7 +812,10 @@ export class QQRouter {
 			await active.session.steer?.(prompt, { images });
 		} catch {
 			// steering 失败（如任务已结束）→ 重新入队处理
-			if (this.activeConversation?.key === active.key && this.activeConversation.accepting) {
+			if (
+				this.activeConversation?.key === active.key &&
+				this.activeConversation.accepting
+			) {
 				this.queue.push(msg);
 				void this.pump();
 			}
@@ -834,10 +862,16 @@ export class QQRouter {
 			let prompt = msg.text;
 			let images: import("./types.ts").QQImageContent[] = [];
 			if (msg.attachments.length > 0 && this.attachmentPipeline) {
-				const prepared = await this.attachmentPipeline.prepare(msg, abort.signal);
+				const prepared = await this.attachmentPipeline.prepare(
+					msg,
+					abort.signal,
+				);
 				preparedCleanup = prepared.cleanup;
 				if (!hasUsableAgentInput(msg, prepared.resources)) {
-					await this.replyToQQ(msg, formatAttachmentFailures(prepared.resources));
+					await this.replyToQQ(
+						msg,
+						formatAttachmentFailures(prepared.resources),
+					);
 					this.emit({ kind: "run_end", messageId: msg.id, ok: false });
 					return;
 				}
@@ -845,12 +879,19 @@ export class QQRouter {
 				images = prepared.images;
 				if (prepared.resources.some((r) => r.status === "rejected")) {
 					// 部分失败：告知但不阻断（追加在最终回复前占 1 次配额）
-					void this.replyToQQ(msg, formatAttachmentFailures(prepared.resources));
+					void this.replyToQQ(
+						msg,
+						formatAttachmentFailures(prepared.resources),
+					);
 				}
 			}
 			const session = await this.registry.get(msg);
 			this.activeSession = session;
-			this.activeConversation = { key: conversationKeyOf(msg), session, accepting: true };
+			this.activeConversation = {
+				key: conversationKeyOf(msg),
+				session,
+				accepting: true,
+			};
 			// 出站媒体交付上下文（M6）：绑定当前回合；agent 可调用 qq_send_local_file
 			const delivery = new QQOutboundDeliveryContext({
 				config: this.config,
@@ -859,7 +900,8 @@ export class QQRouter {
 				target,
 				api: this.api,
 				signal: abort.signal,
-				reserveMessageSequence: () => (budget.isExhausted ? undefined : budget.nextSeq()),
+				reserveMessageSequence: () =>
+					budget.isExhausted ? undefined : budget.nextSeq(),
 			});
 			session.bindOutboundDelivery?.(delivery);
 			const result = await session.run(prompt, { images });
@@ -921,7 +963,8 @@ export class QQRouter {
 		fallbackToPlain: boolean,
 		budget?: ReplyBudget,
 	): Promise<void> {
-		const sharedBudget = budget ?? new ReplyBudget(msg.id, this.replyBudgetLimit);
+		const sharedBudget =
+			budget ?? new ReplyBudget(msg.id, this.replyBudgetLimit);
 		const target = this.targetOf(msg);
 		const formatted = formatQQReply(content, this.config.replyFormat);
 		const chunks = formatted.markdown;
@@ -934,19 +977,38 @@ export class QQRouter {
 			const plain = plainChunks[index] ?? chunk;
 			try {
 				if (this.config.replyFormat === "plain") {
-					await this.api.sendText(target, plain, seq, index === 0 ? keyboard : undefined);
+					await this.api.sendText(
+						target,
+						plain,
+						seq,
+						index === 0 ? keyboard : undefined,
+					);
 				} else {
 					try {
-						await this.api.sendMarkdown(target, chunk, seq, index === 0 ? keyboard : undefined);
+						await this.api.sendMarkdown(
+							target,
+							chunk,
+							seq,
+							index === 0 ? keyboard : undefined,
+						);
 					} catch (err) {
 						if (fallbackToPlain && isMarkdownRejected(err)) {
 							// Markdown 被平台拒绝 → 本条与后续全部降级纯文本（msg_seq 对齐）
-							await this.api.sendText(target, plain, seq, index === 0 ? keyboard : undefined);
+							await this.api.sendText(
+								target,
+								plain,
+								seq,
+								index === 0 ? keyboard : undefined,
+							);
 							for (let rest = index + 1; rest < chunks.length; rest++) {
 								if (sharedBudget.isExhausted) break;
 								const restSeq = sharedBudget.nextSeq();
 								if (restSeq === undefined) break;
-								await this.api.sendText(target, plainChunks[rest] ?? chunks[rest]!, restSeq);
+								await this.api.sendText(
+									target,
+									plainChunks[rest] ?? chunks[rest]!,
+									restSeq,
+								);
 							}
 						} else {
 							throw err;
@@ -957,7 +1019,8 @@ export class QQRouter {
 				this.recordOutbound(msg, chunk, seq);
 			} catch (err) {
 				// 回复失败不抛出（避免队列卡死）；命令场景由调用方处理
-				if (!(err instanceof Error && /Markdown|markdown/i.test(err.message))) break;
+				if (!(err instanceof Error && /Markdown|markdown/i.test(err.message)))
+					break;
 			}
 		}
 	}
@@ -977,7 +1040,7 @@ export class QQRouter {
 	}
 
 	private recordOutbound(
-		msg: QQInboundMessage,
+		_msg: QQInboundMessage,
 		text: string,
 		_seq: number,
 	): void {

@@ -27,34 +27,53 @@ export async function transcribeOpenAI(
 	outerSignal: AbortSignal,
 ): Promise<string> {
 	const key = process.env[config.apiKeyEnv ?? "QQBOT_STT_API_KEY"];
-	if (!key) throw new SttError("stt_key_missing", `未设置 STT 密钥环境变量 ${config.apiKeyEnv ?? "QQBOT_STT_API_KEY"}`);
-	if (!config.baseUrl) throw new SttError("stt_not_configured", "STT baseUrl 未配置");
+	if (!key)
+		throw new SttError(
+			"stt_key_missing",
+			`未设置 STT 密钥环境变量 ${config.apiKeyEnv ?? "QQBOT_STT_API_KEY"}`,
+		);
+	if (!config.baseUrl)
+		throw new SttError("stt_not_configured", "STT baseUrl 未配置");
 
 	const controller = new AbortController();
 	const onAbort = () => controller.abort(outerSignal.reason);
 	outerSignal.addEventListener("abort", onAbort, { once: true });
-	const timer = setTimeout(() => controller.abort(new Error("stt timeout")), config.timeoutMs ?? 60_000);
+	const timer = setTimeout(
+		() => controller.abort(new Error("stt timeout")),
+		config.timeoutMs ?? 60_000,
+	);
 	try {
 		const bytes = await readFile(input.path);
 		const form = new FormData();
 		form.append("model", config.model ?? "whisper-1");
-		form.append("file", new Blob([bytes], { type: input.mimeType }), input.filename);
+		form.append(
+			"file",
+			new Blob([bytes], { type: input.mimeType }),
+			input.filename,
+		);
 		let response: Response;
 		try {
-			response = await fetch(`${config.baseUrl.replace(/\/+$/, "")}/audio/transcriptions`, {
-				method: "POST",
-				headers: { Authorization: `Bearer ${key}` },
-				body: form,
-				signal: controller.signal,
-			});
+			response = await fetch(
+				`${config.baseUrl.replace(/\/+$/, "")}/audio/transcriptions`,
+				{
+					method: "POST",
+					headers: { Authorization: `Bearer ${key}` },
+					body: form,
+					signal: controller.signal,
+				},
+			);
 		} catch (err) {
 			if (outerSignal.aborted) throw new SttError("aborted", "语音处理已取消");
-			if (controller.signal.aborted) throw new SttError("stt_timeout", "语音转写超时");
+			if (controller.signal.aborted)
+				throw new SttError("stt_timeout", "语音转写超时");
 			throw new SttError("stt_failed", `语音转写请求失败：${safeError(err)}`);
 		}
 		if (!response.ok) {
 			await response.body?.cancel().catch(() => undefined);
-			throw new SttError("stt_http_error", `语音转写服务返回 HTTP ${response.status}`);
+			throw new SttError(
+				"stt_http_error",
+				`语音转写服务返回 HTTP ${response.status}`,
+			);
 		}
 		let body: unknown;
 		try {
@@ -63,7 +82,8 @@ export async function transcribeOpenAI(
 			throw new SttError("stt_invalid_response", "语音转写服务返回了无效 JSON");
 		}
 		const text = (body as { text?: unknown })?.text;
-		if (typeof text !== "string" || !text.trim()) throw new SttError("stt_empty", "语音转写没有返回文本");
+		if (typeof text !== "string" || !text.trim())
+			throw new SttError("stt_empty", "语音转写没有返回文本");
 		return text.trim();
 	} finally {
 		clearTimeout(timer);

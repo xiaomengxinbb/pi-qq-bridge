@@ -6,10 +6,21 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { WorkspaceRegistry, WorkspaceError, isValidWorkspaceName } from "../src/workspace-registry.ts";
+import {
+	WorkspaceRegistry,
+	WorkspaceError,
+	isValidWorkspaceName,
+} from "../src/workspace-registry.ts";
 import { ConversationRegistry } from "../src/conversation-registry.ts";
 import { QQRouter } from "../src/router.ts";
-import { makeTestConfig, makeApi, FakeRegistry, FakeSession, msg, type SentMessage } from "./helpers.ts";
+import {
+	makeTestConfig,
+	makeApi,
+	FakeRegistry,
+	FakeSession,
+	msg,
+	type SentMessage,
+} from "./helpers.ts";
 
 function tempDir(prefix: string): string {
 	return mkdtempSync(join(tmpdir(), `pi-qq-bridge-${prefix}-`));
@@ -20,7 +31,10 @@ function tempDir(prefix: string): string {
 test("注册表：default 恒存在；配置 workspace 解析为 realpath", () => {
 	const dir = tempDir("ws");
 	try {
-		const registry = new WorkspaceRegistry([{ name: "research", path: dir }], "/tmp");
+		const registry = new WorkspaceRegistry(
+			[{ name: "research", path: dir }],
+			"/tmp",
+		);
 		assert.equal(registry.has("default"), true);
 		assert.equal(registry.has("research"), true);
 		const resolved = registry.resolve("research");
@@ -34,9 +48,23 @@ test("注册表：default 恒存在；配置 workspace 解析为 realpath", () =
 test("注册表：非法名称 / 相对路径 / 不存在路径拒绝", () => {
 	const dir = tempDir("ws");
 	try {
-		assert.throws(() => new WorkspaceRegistry([{ name: "bad name!", path: dir }], "/tmp"), WorkspaceError);
-		assert.throws(() => new WorkspaceRegistry([{ name: "ok", path: "relative/path" }], "/tmp"), /绝对路径/);
-		assert.throws(() => new WorkspaceRegistry([{ name: "ok", path: "/nonexistent/xyz" }], "/tmp"), /不存在/);
+		assert.throws(
+			() => new WorkspaceRegistry([{ name: "bad name!", path: dir }], "/tmp"),
+			WorkspaceError,
+		);
+		assert.throws(
+			() =>
+				new WorkspaceRegistry([{ name: "ok", path: "relative/path" }], "/tmp"),
+			/绝对路径/,
+		);
+		assert.throws(
+			() =>
+				new WorkspaceRegistry(
+					[{ name: "ok", path: "/nonexistent/xyz" }],
+					"/tmp",
+				),
+			/不存在/,
+		);
 		assert.equal(isValidWorkspaceName("a-b_1"), true);
 		assert.equal(isValidWorkspaceName("a b"), false);
 	} finally {
@@ -102,7 +130,11 @@ test("registry：切换 workspace 后旧会话 dispose、新会话用新 cwd", a
 		// 新 get：以 dirB 为 cwd
 		await registry.get(m);
 		assert.equal(registry.residentCount, 1);
-		assert.deepEqual(initCwds, [dirA, dirB], "新会话应以新 workspace 路径为 cwd");
+		assert.deepEqual(
+			initCwds,
+			[dirA, dirB],
+			"新会话应以新 workspace 路径为 cwd",
+		);
 		// 幂等：同 workspace 重复 set 不清理
 		await registry.setWorkspace("proj", dirB);
 		assert.equal(registry.residentCount, 1, "同 workspace 切换应幂等");
@@ -120,9 +152,16 @@ test("/workspace：无参数列出 + 切换（admin）", async () => {
 	try {
 		const sent: SentMessage[] = [];
 		const registry = new FakeRegistry();
-		const ws = new WorkspaceRegistry([{ name: "research", path: dirB }], "/tmp");
-		const cfg = makeTestConfig({ commands: { ...makeTestConfig().commands, admins: ["user_allowed"] } });
-		const router = new QQRouter(cfg, registry, makeApi(sent), { workspaceRegistry: ws });
+		const ws = new WorkspaceRegistry(
+			[{ name: "research", path: dirB }],
+			"/tmp",
+		);
+		const cfg = makeTestConfig({
+			commands: { ...makeTestConfig().commands, admins: ["user_allowed"] },
+		});
+		const router = new QQRouter(cfg, registry, makeApi(sent), {
+			workspaceRegistry: ws,
+		});
 		// 列出
 		router.handleInbound(msg({ id: "m_list", text: "/workspace" }));
 		await new Promise((r) => setTimeout(r, 50));
@@ -147,13 +186,24 @@ test("/workspace：非 admin 无法切换（授权矩阵）", async () => {
 	try {
 		const sent: SentMessage[] = [];
 		const registry = new FakeRegistry();
-		const ws = new WorkspaceRegistry([{ name: "research", path: dirB }], "/tmp");
-		const cfg = makeTestConfig({ commands: { ...makeTestConfig().commands, admins: [] } });
-		const router = new QQRouter(cfg, registry, makeApi(sent), { workspaceRegistry: ws });
+		const ws = new WorkspaceRegistry(
+			[{ name: "research", path: dirB }],
+			"/tmp",
+		);
+		const cfg = makeTestConfig({
+			commands: { ...makeTestConfig().commands, admins: [] },
+		});
+		const router = new QQRouter(cfg, registry, makeApi(sent), {
+			workspaceRegistry: ws,
+		});
 		router.handleInbound(msg({ id: "m_sw", text: "/workspace research" }));
 		await new Promise((r) => setTimeout(r, 50));
 		assert.match(sent[0]?.content ?? "", /没有 QQ 会话管理权限/);
-		assert.equal(registry.currentWorkspace?.name ?? "default", "default", "不应切换");
+		assert.equal(
+			registry.currentWorkspace?.name ?? "default",
+			"default",
+			"不应切换",
+		);
 	} finally {
 		rmSync(dirB, { recursive: true, force: true });
 	}
@@ -163,8 +213,12 @@ test("/workspace add/remove：QQ 侧提示到本地执行", async () => {
 	const sent: SentMessage[] = [];
 	const registry = new FakeRegistry();
 	const ws = new WorkspaceRegistry([], "/tmp");
-	const cfg = makeTestConfig({ commands: { ...makeTestConfig().commands, admins: ["user_allowed"] } });
-	const router = new QQRouter(cfg, registry, makeApi(sent), { workspaceRegistry: ws });
+	const cfg = makeTestConfig({
+		commands: { ...makeTestConfig().commands, admins: ["user_allowed"] },
+	});
+	const router = new QQRouter(cfg, registry, makeApi(sent), {
+		workspaceRegistry: ws,
+	});
 	router.handleInbound(msg({ id: "m_add", text: "/workspace add x /tmp" }));
 	await new Promise((r) => setTimeout(r, 50));
 	assert.match(sent[0]?.content ?? "", /主机终端/);

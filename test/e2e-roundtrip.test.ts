@@ -115,16 +115,6 @@ test("端到端：重复推送同 msg_id → 只处理一次", async () => {
 		});
 		const api = new QQApi(auth, { sandbox: false, apiBase: mock.baseUrl });
 		let agentRuns = 0;
-		const registry: ConversationRegistryLike = {
-			async get(): Promise<never> {
-				agentRuns += 1;
-				throw new Error("不应重复");
-			},
-			peek(): undefined {
-				return undefined;
-			},
-			async dispose(): Promise<void> {},
-		};
 		// 用 run 计数验证只跑一次：包一层正常 fake
 		const normal = new FakeRegistry({ text: "ok" });
 		const counting: ConversationRegistryLike = {

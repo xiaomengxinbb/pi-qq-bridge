@@ -10,12 +10,17 @@ import { join } from "node:path";
 import { transcribeOpenAI, SttError } from "../src/stt.ts";
 
 async function withSttServer(
-	handler: (body: string, req: import("node:http").IncomingMessage) => { status: number; json: unknown },
+	handler: (
+		body: string,
+		req: import("node:http").IncomingMessage,
+	) => { status: number; json: unknown },
 	fn: (baseUrl: string) => Promise<void>,
 ): Promise<void> {
 	const server: Server = createServer((req, res) => {
 		let raw = "";
-		req.on("data", (c) => { raw += c.toString(); });
+		req.on("data", (c) => {
+			raw += c.toString();
+		});
 		req.on("end", () => {
 			const { status, json } = handler(raw, req);
 			res.statusCode = status;
@@ -39,7 +44,12 @@ function audioFile(): { path: string; cleanup(): void } {
 	return { path, cleanup: () => rmSync(dir, { recursive: true, force: true }) };
 }
 
-const sttConfig = { baseUrl: "", apiKeyEnv: "QQBOT_STT_TEST_KEY", model: "whisper-1", timeoutMs: 5000 };
+const sttConfig = {
+	baseUrl: "",
+	apiKeyEnv: "QQBOT_STT_TEST_KEY",
+	model: "whisper-1",
+	timeoutMs: 5000,
+};
 
 test("transcribeOpenAI：请求形状（Bearer + multipart）+ 返回文本", async () => {
 	process.env.QQBOT_STT_TEST_KEY = "sk-test";
@@ -73,13 +83,25 @@ test("transcribeOpenAI：密钥缺失 → stt_key_missing；未配置 baseUrl �
 	const file = audioFile();
 	try {
 		await assert.rejects(
-			() => transcribeOpenAI({ path: file.path, filename: "v.silk", mimeType: "audio/silk" }, sttConfig, new AbortController().signal),
-			(err: unknown) => err instanceof SttError && err.code === "stt_key_missing",
+			() =>
+				transcribeOpenAI(
+					{ path: file.path, filename: "v.silk", mimeType: "audio/silk" },
+					sttConfig,
+					new AbortController().signal,
+				),
+			(err: unknown) =>
+				err instanceof SttError && err.code === "stt_key_missing",
 		);
 		process.env.QQBOT_STT_TEST_KEY = "sk-test";
 		await assert.rejects(
-			() => transcribeOpenAI({ path: file.path, filename: "v.silk", mimeType: "audio/silk" }, { ...sttConfig, baseUrl: undefined }, new AbortController().signal),
-			(err: unknown) => err instanceof SttError && err.code === "stt_not_configured",
+			() =>
+				transcribeOpenAI(
+					{ path: file.path, filename: "v.silk", mimeType: "audio/silk" },
+					{ ...sttConfig, baseUrl: undefined },
+					new AbortController().signal,
+				),
+			(err: unknown) =>
+				err instanceof SttError && err.code === "stt_not_configured",
 		);
 	} finally {
 		delete process.env.QQBOT_STT_TEST_KEY;
@@ -95,8 +117,14 @@ test("transcribeOpenAI：HTTP 500 → stt_http_error；空文本 → stt_empty",
 			() => ({ status: 500, json: { error: "boom" } }),
 			async (baseUrl) => {
 				await assert.rejects(
-					() => transcribeOpenAI({ path: file.path, filename: "v.silk", mimeType: "audio/silk" }, { ...sttConfig, baseUrl }, new AbortController().signal),
-					(err: unknown) => err instanceof SttError && err.code === "stt_http_error",
+					() =>
+						transcribeOpenAI(
+							{ path: file.path, filename: "v.silk", mimeType: "audio/silk" },
+							{ ...sttConfig, baseUrl },
+							new AbortController().signal,
+						),
+					(err: unknown) =>
+						err instanceof SttError && err.code === "stt_http_error",
 				);
 			},
 		);
@@ -104,7 +132,12 @@ test("transcribeOpenAI：HTTP 500 → stt_http_error；空文本 → stt_empty",
 			() => ({ status: 200, json: { text: "   " } }),
 			async (baseUrl) => {
 				await assert.rejects(
-					() => transcribeOpenAI({ path: file.path, filename: "v.silk", mimeType: "audio/silk" }, { ...sttConfig, baseUrl }, new AbortController().signal),
+					() =>
+						transcribeOpenAI(
+							{ path: file.path, filename: "v.silk", mimeType: "audio/silk" },
+							{ ...sttConfig, baseUrl },
+							new AbortController().signal,
+						),
 					(err: unknown) => err instanceof SttError && err.code === "stt_empty",
 				);
 			},

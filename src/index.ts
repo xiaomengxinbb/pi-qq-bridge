@@ -47,7 +47,9 @@ function createBuildId(): string {
 	const directory = dirname(fileURLToPath(import.meta.url));
 	const hash = createHash("sha256");
 	const sourceFiles = readdirSync(directory)
-		.filter((filename) => filename.endsWith(".ts") && !filename.endsWith(".test.ts"))
+		.filter(
+			(filename) => filename.endsWith(".ts") && !filename.endsWith(".test.ts"),
+		)
 		.sort();
 	for (const filename of sourceFiles) {
 		hash.update(filename);
@@ -115,7 +117,10 @@ export default function piQQBridge(pi: ExtensionAPI): void {
 	/** 组装完整桥接运行时（auth + gateway + api + registry + router）并接线 */
 	const createBridge = (
 		cfg: PiQQBridgeConfig,
-		ctx: { cwd?: string; ui?: { setWidget?: (id: string, lines: string[]) => void } },
+		ctx: {
+			cwd?: string;
+			ui?: { setWidget?: (id: string, lines: string[]) => void };
+		},
 	): BridgeRuntime => {
 		const agentDir = expandHome("~/.pi/agent");
 		const cwd = ctx.cwd ?? process.cwd();
@@ -128,7 +133,10 @@ export default function piQQBridge(pi: ExtensionAPI): void {
 			path: cwd,
 		});
 		const accessRequests = new QQAccessRequestStore();
-		const attachmentPipeline = new AttachmentPipeline(cfg, `${process.pid}-${Date.now()}`);
+		const attachmentPipeline = new AttachmentPipeline(
+			cfg,
+			`${process.pid}-${Date.now()}`,
+		);
 		const view = new TerminalView({
 			setWidget: (id, lines) => ctx.ui?.setWidget?.(id, lines),
 		});
@@ -448,7 +456,8 @@ export default function piQQBridge(pi: ExtensionAPI): void {
 	});
 
 	pi.registerCommand("workspace", {
-		description: "查看/切换工作区：/workspace [名称] | add <名称> <路径> | remove <名称>",
+		description:
+			"查看/切换工作区：/workspace [名称] | add <名称> <路径> | remove <名称>",
 		getArgumentCompletions: (prefix: string) => {
 			const rt = getRuntime();
 			if (!rt) return null;
@@ -484,7 +493,10 @@ export default function piQQBridge(pi: ExtensionAPI): void {
 			if (tokens[0] === "add") {
 				const [name, path, ...rest] = tokens.slice(1);
 				if (!name || !path) {
-					ctx.ui.notify("用法：/workspace add <名称> <绝对路径> [描述]", "info");
+					ctx.ui.notify(
+						"用法：/workspace add <名称> <绝对路径> [描述]",
+						"info",
+					);
 					return;
 				}
 				try {
@@ -492,7 +504,10 @@ export default function piQQBridge(pi: ExtensionAPI): void {
 					// 持久化 + 热生效
 					cfg.workspaces = registry.list().filter((w) => w.name !== "default");
 					saveConfig(expandHome(DEFAULT_CONFIG_PATH), cfg);
-					ctx.ui.notify(`已添加工作区 ${workspace.name} → ${workspace.path}`, "info");
+					ctx.ui.notify(
+						`已添加工作区 ${workspace.name} → ${workspace.path}`,
+						"info",
+					);
 				} catch (err) {
 					notify(ctx, `pi-qq-bridge：${(err as Error).message}`);
 				}
@@ -518,11 +533,17 @@ export default function piQQBridge(pi: ExtensionAPI): void {
 			try {
 				const resolved = registry.resolve(tokens[0]!);
 				if (rt.registry.currentWorkspace.name === resolved.name) {
-					ctx.ui.notify(`已在工作区 ${resolved.name}（${resolved.path}）`, "info");
+					ctx.ui.notify(
+						`已在工作区 ${resolved.name}（${resolved.path}）`,
+						"info",
+					);
 					return;
 				}
 				await rt.registry.setWorkspace(resolved.name, resolved.path);
-				ctx.ui.notify(`已切换工作区：${resolved.name}（${resolved.path}）`, "info");
+				ctx.ui.notify(
+					`已切换工作区：${resolved.name}（${resolved.path}）`,
+					"info",
+				);
 			} catch (err) {
 				notify(ctx, `pi-qq-bridge：${(err as Error).message}`);
 			}
