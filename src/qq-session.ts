@@ -9,6 +9,8 @@
  */
 import { realpathSync } from "node:fs";
 import { pathToFileURL } from "node:url";
+import { Type } from "typebox";
+import type { QQOutboundDeliveryContext } from "./outbound-media.ts";
 
 // 拆分拼接，避免字面量出现在 bundle 路径扫描目标里（@xsqm 同款手法）
 const SDK_MARKER = "@earendil-works" + "/" + "pi-coding-agent";
@@ -112,6 +114,7 @@ export interface QQSessionLike {
 	sessionName(): string | undefined;
 	compact(instructions?: string): Promise<{ tokensBefore?: number }>;
 	abort(): Promise<void>;
+	bindOutboundDelivery?(context?: unknown): void;
 }
 
 /** 会话信息（listSessions 返回项的结构化视图） */
@@ -173,6 +176,7 @@ export class QQAgentSession {
 	private sessionDir?: string;
 	private persistent = true;
 	private restore: "recent" | "new" = "recent";
+	private outboundDelivery?: QQOutboundDeliveryContext;
 
 	isReady(): boolean {
 		return !!this.runtime && !this.disposed;

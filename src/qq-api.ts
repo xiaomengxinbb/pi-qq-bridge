@@ -63,21 +63,65 @@ export class QQApi {
 		});
 	}
 
+	/** 上传本地字节（不主动发送；返回 file_info） */
+	async uploadMedia(
+		target: QQReplyTarget,
+		fileType: 1 | 4,
+		fileData: string,
+		signal?: AbortSignal,
+		timeoutMs = 30_000,
+	): Promise<{ fileInfo: string; fileUuid?: string; ttl: number }> {
+		const path =
+			target.type === "private"
+				? `/v2/users/${encodeURIComponent(target.userOpenId ?? "")}/files`
+				: `/v2/groups/${encodeURIComponent(target.groupOpenId ?? "")}/files`;
+		const body = await this.postJson(
+			path,
+			{ file_type: fileType, file_data: fileData, srv_send_msg: false },
+			timeoutMs,
+			"media upload",
+		);
+		if (typeof body.file_info !== "string" || !body.file_info) {
+			throw new QQApiError("media upload response missing file_info", 502, undefined, true);
+		}
+		return {
+			fileInfo: body.file_info,
+			...(typeof body.file_uuid === "string" ? { fileUuid: body.file_uuid } : {}),
+			ttl: typeof body.ttl === "number" && Number.isFinite(body.ttl) ? body.ttl : 0,
+		};
+	}
+
+	/** 发送已上传媒体（msg_type:7 被动回复） */
+	async sendMedia(target: QQReplyTarget, fileInfo: string, msgSeq: number, signal?: AbortSignal): Promise<void> {
+		await this.send(
+			target,
+			{
+				msg_type: 7,
+				media: { file_info: fileInfo },
+				msg_id: target.msgId,
+				msg_seq: msgSeq,
+				...(target.type === "group" ? { content: " " } : {}),
+			},
+			signal,
+		);
+	}
+
 	private async send(
 		target: QQReplyTarget,
 		payload: Record<string, unknown>,
+		signal?: AbortSignal,
 	): Promise<void> {
 		const path =
 			target.type === "private"
 				? `/v2/users/${encodeURIComponent(target.userOpenId ?? "")}/messages`
 				: `/v2/groups/${encodeURIComponent(target.groupOpenId ?? "")}/messages`;
 		try {
-			await this.postJson(path, payload, 10_000, "send");
+			await this.postJson(path, payload, 10_000, "send", signal);
 		} catch (err) {
 			// 401：token 失效，刷新后重试一次
 			if (err instanceof QQApiError && err.status === 401) {
 				await this.auth.forceRefresh();
-				await this.postJson(path, payload, 10_000, "send");
+				await this.postJson(path, payload, 10_000, "send", signal);
 				return;
 			}
 			throw err;
@@ -89,9 +133,10 @@ export class QQApi {
 		payload: Record<string, unknown>,
 		timeoutMs: number,
 		operation: string,
+		signal?: AbortSignal,
 	): Promise<Record<string, unknown>> {
 		const token = await this.auth.getToken();
-		const requestSignal = AbortSignal.timeout(timeoutMs);
+		const requestSignal = signal ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs);
 		let res: Response;
 		try {
 			res = await fetch(`${this.base}${path}`, {

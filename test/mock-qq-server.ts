@@ -22,6 +22,8 @@ export interface MockQQServer {
 	heartbeatCount: number;
 	/** 收到的被动回复消息（POST /v2/users|groups/{openid}/messages） */
 	messages: Array<{ path: string; body: Record<string, unknown> }>;
+	/** 收到的文件上传（POST /v2/users|groups/{openid}/files） */
+	uploads: string[];
 	sendEvent(t: string, d: unknown): void;
 	close(): Promise<void>;
 }
@@ -72,6 +74,7 @@ function decodeClientFrame(data: Buffer): string {
 export async function startMockQQServer(): Promise<MockQQServer> {
 	const events: string[] = [];
 	const messages: MockQQServer["messages"] = [];
+	const uploads: string[] = [];
 	let identify: unknown;
 	let heartbeatCount = 0;
 	let wsSockets: Socket[] = [];
@@ -98,7 +101,7 @@ export async function startMockQQServer(): Promise<MockQQServer> {
 		},
 	);
 
-	const wss = createServer((req: IncomingMessage, res: ServerResponse) => {
+	const wss = createServer((_req: IncomingMessage, res: ServerResponse) => {
 		res.statusCode = 400;
 		res.end("websocket only");
 	});
@@ -203,6 +206,32 @@ export async function startMockQQServer(): Promise<MockQQServer> {
 			});
 			return;
 		}
+		if (
+			req.method === "POST" &&
+			/\/v2\/(users|groups)\/[^/]+\/files$/.test(url)
+		) {
+			let raw = "";
+			req.on("data", (chunk) => {
+				raw += chunk.toString();
+			});
+			req.on("end", () => {
+				let body: Record<string, unknown> = {};
+				try {
+					body = JSON.parse(raw) as Record<string, unknown>;
+				} catch {
+					// 保留空 body
+				}
+				if (typeof body.file_data !== "string" || body.file_data === "") {
+					res.statusCode = 400;
+					res.end(JSON.stringify({ code: 400, message: "missing file_data" }));
+					return;
+				}
+				uploads.push(url);
+				res.setHeader("Content-Type", "application/json");
+				res.end(JSON.stringify({ file_info: `file_info_${uploads.length}`, ttl: 600 }));
+			});
+			return;
+		}
 		res.statusCode = 404;
 		res.end("not found");
 	});
@@ -217,6 +246,7 @@ export async function startMockQQServer(): Promise<MockQQServer> {
 			return heartbeatCount;
 		},
 		messages,
+		uploads,
 		sendEvent(t: string, d: unknown) {
 			events.push(t);
 			const payload = JSON.stringify({ op: 0, s: Date.now(), t, d });

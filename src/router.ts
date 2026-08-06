@@ -29,6 +29,7 @@ import {
 	hasUsableAgentInput,
 } from "./attachment-pipeline.ts";
 import { type WorkspaceRegistry, WorkspaceError } from "./workspace-registry.ts";
+import { QQOutboundDeliveryContext } from "./outbound-media.ts";
 import type { QQInboundMessage, QQReplyTarget } from "./types.ts";
 import type { QQRunResult, QQSessionInfo, QQSessionLike } from "./qq-session.ts";
 
@@ -805,7 +806,19 @@ export class QQRouter {
 			}
 			const session = await this.registry.get(msg);
 			this.activeSession = session;
+			// 出站媒体交付上下文（M6）：绑定当前回合；agent 可调用 qq_send_local_file
+			const delivery = new QQOutboundDeliveryContext({
+				config: this.config,
+				cwd: this.registry.currentWorkspace?.path ?? process.cwd(),
+				message: msg,
+				target,
+				api: this.api,
+				signal: abort.signal,
+				reserveMessageSequence: () => (budget.isExhausted ? undefined : budget.nextSeq()),
+			});
+			session.bindOutboundDelivery?.(delivery);
 			const result = await session.run(prompt, { images });
+			delivery.close();
 			let text = result.text;
 			if (this.config.showProcess && result.tools.length > 0) {
 				const summary = result.tools

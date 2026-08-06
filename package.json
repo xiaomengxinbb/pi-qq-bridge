@@ -36,6 +36,7 @@
     "typescript": "^7.0.2"
   },
   "dependencies": {
+    "typebox": "^1.1.38",
     "unpdf": "^1.8.0"
   }
 }
