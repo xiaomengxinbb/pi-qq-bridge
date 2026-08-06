@@ -61,7 +61,7 @@ chmod 600 ~/.pi/agent/pi-qq-bridge.json
 | M5 | ⏳ | `/workspace`：注册表 + 切换 + 会话隔离 |
 | M6 | ✅ | 出站媒体：qq_send_local_file 工具 + 完整校验链（base64 通道；分片 M7） |
 | M7 | ⏳ | 加固：host 契约/steering/安全审查 |
-| M8 | ⏳ | 发布 npm pi package + README/CHANGELOG |
+| M8 | ⏳ | 发布 npm pi package（需沙箱凭据实测后） |
 
 ## 目录结构
 

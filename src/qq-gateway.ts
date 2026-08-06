@@ -45,6 +45,9 @@ export class QQGateway {
 	private state: QQGatewayState = "disconnected";
 	private stateInfo = "";
 	private heartbeatTimer: ReturnType<typeof setInterval> | undefined;
+	private heartbeatAckPending = false;
+	private lastHeartbeatAt = 0;
+	private readonly heartbeatAckTimeoutMs = 15_000;
 	private sessionId: string | undefined;
 	private lastSeq = 0;
 	private reconnectAttempts = 0;
@@ -251,7 +254,7 @@ export class QQGateway {
 				break;
 			}
 			case OP_HEARTBEAT_ACK:
-				// 心跳已确认（ACK 超时检测 M7 加固）
+				this.heartbeatAckPending = false;
 				break;
 			case OP_DISPATCH: {
 				if (typeof frame.s === "number") this.lastSeq = frame.s;
@@ -353,7 +356,16 @@ export class QQGateway {
 		this.clearHeartbeat();
 		this.heartbeatTimer = setInterval(() => {
 			if (!this.ws) return;
+			// 假死检测：上次心跳未确认且超时 → 主动重连（M7 加固）
+			if (this.heartbeatAckPending && Date.now() - this.lastHeartbeatAt > this.heartbeatAckTimeoutMs) {
+				this.setState("connecting", "心跳超时，主动重连");
+				this.closeSocket();
+				this.scheduleReconnect("heartbeat timeout");
+				return;
+			}
 			this.ws.send(JSON.stringify({ op: OP_HEARTBEAT, d: this.lastSeq }));
+			this.heartbeatAckPending = true;
+			this.lastHeartbeatAt = Date.now();
 		}, intervalMs);
 		this.heartbeatTimer.unref?.();
 	}
@@ -363,6 +375,7 @@ export class QQGateway {
 			clearInterval(this.heartbeatTimer);
 			this.heartbeatTimer = undefined;
 		}
+		this.heartbeatAckPending = false;
 	}
 
 	private scheduleReconnect(reason: string): void {
