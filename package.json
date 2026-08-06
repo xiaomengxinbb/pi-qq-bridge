@@ -34,5 +34,8 @@
   },
   "devDependencies": {
     "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "unpdf": "^1.8.0"
   }
 }

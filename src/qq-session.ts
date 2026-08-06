@@ -278,8 +278,9 @@ export class QQAgentSession {
 	/** 运行一次 prompt 到完成（调用方负责串行化）。返回最终文本与工具记录。 */
 	async run(
 		prompt: string,
-		observer?: QQAgentRunObserver,
+		options: { images?: import("./types.ts").QQImageContent[]; observer?: QQAgentRunObserver } = {},
 	): Promise<QQRunResult> {
+		const { images, observer } = options;
 		const session = (this.runtime as { session: unknown }).session;
 		if (!session) throw new Error("QQ 会话未初始化");
 		const tools: QQRunResult["tools"] = [];
@@ -347,7 +348,7 @@ export class QQAgentSession {
 						options: Record<string, unknown>,
 					): Promise<void>;
 				}
-			).prompt(prompt, { source: "extension" });
+			).prompt(prompt, { source: "extension", ...(images && images.length ? { images } : {}) });
 		} finally {
 			unsubscribe();
 		}
@@ -437,7 +438,9 @@ export class QQAgentSession {
 	async listSessions(): Promise<QQSessionInfo[]> {
 		if (!this.persistent || !this.sessionDir) return [];
 		const sdk = (await loadSdk()) as {
-			SessionManager: { list(cwd: string, sessionDir?: string): Promise<unknown[]> };
+			SessionManager: {
+				list(cwd: string, sessionDir?: string): Promise<unknown[]>;
+			};
 		};
 		const sessions = await sdk.SessionManager.list(this.cwd, this.sessionDir);
 		return sessions as QQSessionInfo[];
@@ -495,7 +498,9 @@ export class QQAgentSession {
 	/** 中止当前运行（/stop 用） */
 	async abort(): Promise<void> {
 		try {
-			await (this.runtime as { session?: { abort?(): Promise<void> } })?.session?.abort?.();
+			await (
+				this.runtime as { session?: { abort?(): Promise<void> } }
+			)?.session?.abort?.();
 		} catch {
 			// 中止错误在停机路径忽略
 		}
@@ -554,7 +559,8 @@ export class QQAgentSession {
 			getSessionName?(): unknown;
 		};
 	} {
-		return (this.requireRuntime() as unknown as { session: unknown }).session as {
+		return (this.requireRuntime() as unknown as { session: unknown })
+			.session as {
 			setModel(model: unknown): Promise<void>;
 			setThinkingLevel(level: string): void;
 			compact(instructions?: string): Promise<{ tokensBefore?: number }>;

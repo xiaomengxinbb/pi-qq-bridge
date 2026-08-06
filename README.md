@@ -27,7 +27,7 @@ Pi × QQ 双向通信扩展（pi 官方 extension）。通过 QQ 官方机器人
 ```bash
 # 开发
 npm install
-npm test          # 88 个测试（config/auth/gateway/lock/router/命令/审批）
+npm test          # 114 个测试（config/auth/gateway/lock/router/命令/审批/附件管线）
 npm run typecheck
 
 # 使用：复制示例配置
@@ -56,7 +56,7 @@ chmod 600 ~/.pi/agent/pi-qq-bridge.json
 | M0 | ✅ | 骨架 + config + auth + gateway + 单实例锁 + 测试 |
 | M1 | ✅ | 文本私聊闭环：inbound 归一化 → 隔离会话 → 被动回复；去重/回复预算/白名单 |
 | M2 | ✅ | 命令体系：状态机 TTL + 审批四件套 + Keyboard + showProcess/progress ack |
-| M3 | ⏳ | 多媒体入站：图片/语音/文档 + STT/PDF |
+| M3 | ✅ | 多媒体入站：安全下载管线 + 图片/语音/文档 + STT/PDF + mime 校验 |
 | M4 | ⏳ | 群聊（GROUP_AT）+ allowGroups |
 | M5 | ⏳ | `/workspace`：注册表 + 切换 + 会话隔离 |
 | M6 | ⏳ | 出站媒体（base64/分片双通道）+ 分块回复 |
@@ -79,6 +79,14 @@ test/
 scripts/
   spike-sdk.ts        # createAgentSessionRuntime 可用性验证（M0 spike）
 ```
+
+## 多媒体入站（M3）
+
+- 附件下载：HTTPS-only + DNS/重定向 SSRF 校验（DNS pinning）+ 流式大小限制 + 超时/Abort + 有限重试
+- 分类嗅探：magic bytes（JPEG/PNG/GIF/PDF/DOC/文本/压缩包）+ `mime_mismatch` 一致性校验
+- 图片 → pi SDK `resizeImage` → 视觉模型；语音 → QQ ASR 优先 / 可选 OpenAI-compatible STT（密钥仅环境变量）
+- TXT/PDF 有界提取（页数/字符上限）；DOC 与压缩包明确拒绝，不自动解压或执行
+- 临时文件 `tmpdir/pi-qq-bridge/` 0o700，消息结束后清理；附件正文标记为不可信数据进 prompt
 
 ## 安全
 

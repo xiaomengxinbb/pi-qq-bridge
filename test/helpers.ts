@@ -5,11 +5,17 @@
 import { DEFAULT_CONFIG, type PiQQBridgeConfig } from "../src/config.ts";
 import type { QQApi } from "../src/qq-api.ts";
 import type { QQInboundMessage, QQReplyTarget } from "../src/types.ts";
-import type { QQRunResult, QQModelInfo, QQSessionInfo } from "../src/qq-session.ts";
+import type {
+	QQRunResult,
+	QQModelInfo,
+	QQSessionInfo,
+} from "../src/qq-session.ts";
 import type { ConversationRegistryLike, QQSessionLike } from "../src/router.ts";
 
 /** 从 DEFAULT_CONFIG 构造完整配置（默认无管理员、单授权用户可选） */
-export function makeTestConfig(overrides: Partial<PiQQBridgeConfig> = {}): PiQQBridgeConfig {
+export function makeTestConfig(
+	overrides: Partial<PiQQBridgeConfig> = {},
+): PiQQBridgeConfig {
 	return {
 		...DEFAULT_CONFIG,
 		appId: "test-app",
@@ -46,6 +52,7 @@ export interface FakeSessionOpts {
 	error?: Error;
 	delayMs?: number;
 	onPrompt?: (prompt: string) => void;
+	onRun?: (prompt: string, options?: unknown) => void;
 	models?: QQModelInfo[];
 	thinkingLevel?: string;
 	thinkingLevels?: string[];
@@ -65,9 +72,11 @@ export class FakeSession implements QQSessionLike {
 		this.opts = opts;
 	}
 
-	async run(prompt: string): Promise<QQRunResult> {
+	async run(prompt: string, options?: unknown): Promise<QQRunResult> {
 		this.opts.onPrompt?.(prompt);
-		if (this.opts.delayMs) await new Promise((r) => setTimeout(r, this.opts.delayMs));
+		this.opts.onRun?.(prompt, options);
+		if (this.opts.delayMs)
+			await new Promise((r) => setTimeout(r, this.opts.delayMs));
 		if (this.opts.error) throw this.opts.error;
 		return {
 			text: this.opts.text ?? "fake answer",
@@ -93,8 +102,12 @@ export class FakeSession implements QQSessionLike {
 		const found = (this.opts.models ?? []).find(
 			(m) => m.provider === provider && m.id === modelId,
 		);
-		if (!found) throw new Error(`模型不存在或当前未配置认证：${provider}/${modelId}`);
-		this.opts.models = [found, ...(this.opts.models ?? []).filter((m) => m !== found)];
+		if (!found)
+			throw new Error(`模型不存在或当前未配置认证：${provider}/${modelId}`);
+		this.opts.models = [
+			found,
+			...(this.opts.models ?? []).filter((m) => m !== found),
+		];
 		return found;
 	}
 
@@ -113,7 +126,10 @@ export class FakeSession implements QQSessionLike {
 
 	async newSession(name?: string): Promise<{ id: string; name?: string }> {
 		this.opts.onNewSession?.();
-		return { id: `new-session-${Math.random().toString(36).slice(2, 8)}`, ...(name ? { name } : {}) };
+		return {
+			id: `new-session-${Math.random().toString(36).slice(2, 8)}`,
+			...(name ? { name } : {}),
+		};
 	}
 
 	async listSessions(): Promise<QQSessionInfo[]> {
@@ -149,20 +165,26 @@ export class FakeSession implements QQSessionLike {
 	}
 }
 
-
 export class FakeRegistry implements ConversationRegistryLike {
 	sessions = new Map<string, FakeSession>();
 	created: string[] = [];
 	private readonly sessionOpts: FakeSessionOpts;
 	private readonly sessionFactory: (key: string) => FakeSession;
 
-	constructor(sessionOpts: FakeSessionOpts = {}, sessionFactory?: (key: string) => FakeSession) {
+	constructor(
+		sessionOpts: FakeSessionOpts = {},
+		sessionFactory?: (key: string) => FakeSession,
+	) {
 		this.sessionOpts = sessionOpts;
-		this.sessionFactory = sessionFactory ?? (() => new FakeSession(sessionOpts));
+		this.sessionFactory =
+			sessionFactory ?? (() => new FakeSession(sessionOpts));
 	}
 
 	async get(msg: QQInboundMessage): Promise<FakeSession> {
-		const key = msg.type === "private" ? `private:${msg.userOpenId}` : `group:${msg.groupOpenId}`;
+		const key =
+			msg.type === "private"
+				? `private:${msg.userOpenId}`
+				: `group:${msg.groupOpenId}`;
 		let session = this.sessions.get(key);
 		if (!session) {
 			session = this.sessionFactory(key);
@@ -173,13 +195,19 @@ export class FakeRegistry implements ConversationRegistryLike {
 	}
 
 	peek(msg: QQInboundMessage): FakeSession | undefined {
-		return this.sessions.get(msg.type === "private" ? `private:${msg.userOpenId}` : `group:${msg.groupOpenId}`);
+		return this.sessions.get(
+			msg.type === "private"
+				? `private:${msg.userOpenId}`
+				: `group:${msg.groupOpenId}`,
+		);
 	}
 
 	async dispose(): Promise<void> {}
 }
 
-export function msg(overrides: Partial<QQInboundMessage> = {}): QQInboundMessage {
+export function msg(
+	overrides: Partial<QQInboundMessage> = {},
+): QQInboundMessage {
 	return {
 		id: `m_${Math.random().toString(36).slice(2, 10)}`,
 		type: "private",

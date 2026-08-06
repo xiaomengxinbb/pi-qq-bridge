@@ -23,6 +23,11 @@ import {
 } from "./model-pages.ts";
 import { buildCommandKeyboard, type QQCommandButton } from "./qq-keyboard.ts";
 import type { QQAccessRequestStore } from "./access-requests.ts";
+import {
+	AttachmentPipeline,
+	formatAttachmentFailures,
+	hasUsableAgentInput,
+} from "./attachment-pipeline.ts";
 import type { QQInboundMessage, QQReplyTarget } from "./types.ts";
 import type { QQRunResult, QQSessionInfo } from "./qq-session.ts";
 
@@ -77,6 +82,8 @@ export interface QQRouterOptions {
 	replyBudgetLimit?: number;
 	/** 去重 TTL（默认 2h） */
 	dedupeTtlMs?: number;
+	/** 附件预处理管线（M3；不传则附件消息按无附件处理） */
+	attachmentPipeline?: AttachmentPipeline;
 	/** 访问申请存储（未授权私聊入口；不传则直接拒绝） */
 	accessRequests?: QQAccessRequestStore;
 	/** 命令状态机（selection/confirmation） */
@@ -99,12 +106,14 @@ export class QQRouter {
 	private readonly dedupe: MessageDedupe;
 	private running = false;
 	private activeSession: QQSessionLike | undefined;
+	private activeAbort: AbortController | undefined;
 	private readonly replyBudgetLimit: number;
 	private readonly maxQueueSize: number;
 	private readonly stateMachine: CommandStateMachine;
 	private readonly accessRequests?: QQAccessRequestStore;
 	private readonly onEvent?: (event: QQRouterEvent) => void;
 	private readonly statusProvider?: () => string;
+	private readonly attachmentPipeline?: AttachmentPipeline;
 	private readonly recentInbound: LastEntry[] = [];
 	private readonly recentOutbound: LastEntry[] = [];
 
@@ -131,6 +140,7 @@ export class QQRouter {
 		this.accessRequests = options.accessRequests;
 		this.onEvent = options.onEvent;
 		this.statusProvider = options.statusProvider;
+		this.attachmentPipeline = options.attachmentPipeline;
 	}
 
 	// ── 入站入口 ───────────────────────────────────────────────────
@@ -279,7 +289,11 @@ export class QQRouter {
 				);
 				return;
 			case "status":
-				await this.replyToQQ(msg, await this.statusText(msg), this.helpKeyboard(msg));
+				await this.replyToQQ(
+					msg,
+					await this.statusText(msg),
+					this.helpKeyboard(msg),
+				);
 				return;
 			case "last":
 				await this.replyToQQ(msg, this.lastSummary());
@@ -338,7 +352,9 @@ export class QQRouter {
 		if (tokens.length === 1 && /^\d+$/.test(tokens[0]!)) {
 			// 数字参数：必须有选择上下文，否则直接报错（避免被当作搜索词）
 			if (pending?.command !== "model") {
-				throw new Error("请先发送 /model <关键词> 获取候选列表，再发送 /model <序号> 选择");
+				throw new Error(
+					"请先发送 /model <关键词> 获取候选列表，再发送 /model <序号> 选择",
+				);
 			}
 			const state = pending.state as { candidates: QQModelInfo[] };
 			const index = Number(tokens[0]) - 1;
@@ -602,6 +618,7 @@ export class QQRouter {
 		const removed = this.queue.length;
 		this.clearQueue();
 		let aborted = false;
+		this.activeAbort?.abort(new Error("QQ task stopped"));
 		if (this.activeSession?.isStreaming() === true) {
 			await this.activeSession.abort();
 			aborted = true;
@@ -731,6 +748,8 @@ export class QQRouter {
 	private async runOne(msg: QQInboundMessage): Promise<void> {
 		const budget = new ReplyBudget(msg.id, this.replyBudgetLimit);
 		const target = this.targetOf(msg);
+		const abort = new AbortController();
+		this.activeAbort = abort;
 		this.emit({ kind: "run_start", messageId: msg.id });
 		// progress ack：任务超时未完成 → 先发回执（占 1 次配额）
 		const ackTimer =
@@ -747,10 +766,28 @@ export class QQRouter {
 						}
 					}, this.config.progress.ackAfterMs)
 				: undefined;
+		let preparedCleanup: (() => Promise<void>) | undefined;
 		try {
+			let prompt = msg.text;
+			let images: import("./types.ts").QQImageContent[] = [];
+			if (msg.attachments.length > 0 && this.attachmentPipeline) {
+				const prepared = await this.attachmentPipeline.prepare(msg, abort.signal);
+				preparedCleanup = prepared.cleanup;
+				if (!hasUsableAgentInput(msg, prepared.resources)) {
+					await this.replyToQQ(msg, formatAttachmentFailures(prepared.resources));
+					this.emit({ kind: "run_end", messageId: msg.id, ok: false });
+					return;
+				}
+				prompt = prepared.prompt;
+				images = prepared.images;
+				if (prepared.resources.some((r) => r.status === "rejected")) {
+					// 部分失败：告知但不阻断（追加在最终回复前占 1 次配额）
+					void this.replyToQQ(msg, formatAttachmentFailures(prepared.resources));
+				}
+			}
 			const session = await this.registry.get(msg);
 			this.activeSession = session;
-			const result = await session.run(msg.text);
+			const result = await session.run(prompt, { images });
 			let text = result.text;
 			if (this.config.showProcess && result.tools.length > 0) {
 				const summary = result.tools
@@ -789,6 +826,8 @@ export class QQRouter {
 			this.emit({ kind: "run_end", messageId: msg.id, ok: false });
 		} finally {
 			if (ackTimer) clearTimeout(ackTimer);
+			this.activeAbort = undefined;
+			if (preparedCleanup) await preparedCleanup().catch(() => undefined);
 		}
 	}
 

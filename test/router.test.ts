@@ -33,7 +33,11 @@ test("授权用户：消息 → 会话 run → 文本被动回复（引用原 ms
 test("未授权用户（无申请流程）：拒绝回复，不创建会话", async () => {
 	const sent: SentMessage[] = [];
 	const registry = new FakeRegistry();
-	const router = new QQRouter(makeTestConfig({ commands: { ...cfg.commands, accessRequests: false } }), registry, makeApi(sent));
+	const router = new QQRouter(
+		makeTestConfig({ commands: { ...cfg.commands, accessRequests: false } }),
+		registry,
+		makeApi(sent),
+	);
 	router.handleInbound(msg({ userOpenId: "user_evil" }));
 	await new Promise((r) => setTimeout(r, 50));
 	assert.equal(sent.length, 1);
@@ -45,7 +49,9 @@ test("未授权私聊（accessRequests 开）：生成申请码并回复，不�
 	const sent: SentMessage[] = [];
 	const registry = new FakeRegistry();
 	const requests = new QQAccessRequestStore();
-	const router = new QQRouter(cfg, registry, makeApi(sent), { accessRequests: requests });
+	const router = new QQRouter(cfg, registry, makeApi(sent), {
+		accessRequests: requests,
+	});
 	router.handleInbound(msg({ userOpenId: "user_newbie" }));
 	await new Promise((r) => setTimeout(r, 50));
 	assert.equal(sent.length, 1);
@@ -61,7 +67,12 @@ test("未授权私聊（accessRequests 开）：生成申请码并回复，不�
 test("msg_id 去重：重复推送只处理一次", async () => {
 	const sent: SentMessage[] = [];
 	let prompts = 0;
-	const registry = new FakeRegistry({ text: "ok", onPrompt: () => { prompts += 1; } });
+	const registry = new FakeRegistry({
+		text: "ok",
+		onPrompt: () => {
+			prompts += 1;
+		},
+	});
 	const router = new QQRouter(cfg, registry, makeApi(sent));
 	const m = msg({ id: "dup_msg_id" });
 	router.handleInbound(m);
@@ -78,7 +89,10 @@ test("FIFO：多条消息串行处理，不并发", async () => {
 	const origRun = FakeRegistry.prototype.get;
 	// 用带延迟的 session 验证串行
 	const registry = new FakeRegistry({ text: "ok", delayMs: 30 });
-	registry.get = async function (this: FakeRegistry, m: Parameters<typeof origRun>[0]) {
+	registry.get = async function (
+		this: FakeRegistry,
+		m: Parameters<typeof origRun>[0],
+	) {
 		active += 1;
 		maxActive = Math.max(maxActive, active);
 		const session = await origRun.call(this, m);
@@ -110,7 +124,9 @@ test("FIFO：多条消息串行处理，不并发", async () => {
 
 test("agent 运行失败：用户可读错误回复（占 1 次配额）", async () => {
 	const sent: SentMessage[] = [];
-	const registry = new FakeRegistry({ error: new Error("ENOTFOUND getaddrinfo host") });
+	const registry = new FakeRegistry({
+		error: new Error("ENOTFOUND getaddrinfo host"),
+	});
 	const router = new QQRouter(cfg, registry, makeApi(sent));
 	router.handleInbound(msg());
 	await new Promise((r) => setTimeout(r, 50));
@@ -147,7 +163,11 @@ test("危险命令（/login /quit）：显式阻塞", async () => {
 		const router = new QQRouter(cfg, new FakeRegistry(), makeApi(sent));
 		router.handleInbound(msg({ text: cmd }));
 		await new Promise((r) => setTimeout(r, 30));
-		assert.match(sent[0]?.content ?? "", /只能在受信任的主机终端/, `/${cmd} 应被阻塞`);
+		assert.match(
+			sent[0]?.content ?? "",
+			/只能在受信任的主机终端/,
+			`/${cmd} 应被阻塞`,
+		);
 	}
 });
 
@@ -163,8 +183,14 @@ test("管理命令权限：普通用户执行 /new 被拒", async () => {
 test("管理员 /new：创建会话并回复", async () => {
 	const sent: SentMessage[] = [];
 	let newCount = 0;
-	const registry = new FakeRegistry({ onNewSession: () => { newCount += 1; } });
-	const adminCfg = makeTestConfig({ commands: { ...cfg.commands, admins: ["user_allowed"] } });
+	const registry = new FakeRegistry({
+		onNewSession: () => {
+			newCount += 1;
+		},
+	});
+	const adminCfg = makeTestConfig({
+		commands: { ...cfg.commands, admins: ["user_allowed"] },
+	});
 	const router = new QQRouter(adminCfg, registry, makeApi(sent));
 	router.handleInbound(msg({ text: "/new 测试会话" }));
 	await new Promise((r) => setTimeout(r, 50));
@@ -185,8 +211,17 @@ test("/help：列出命令", async () => {
 test("/stop：清队列 + 中止运行中任务", async () => {
 	const sent: SentMessage[] = [];
 	let aborted = 0;
-	const registry = new FakeRegistry({ text: "ok", delayMs: 100, streaming: true, onAbort: () => { aborted += 1; } });
-	const adminCfg = makeTestConfig({ commands: { ...cfg.commands, admins: ["user_allowed"] } });
+	const registry = new FakeRegistry({
+		text: "ok",
+		delayMs: 100,
+		streaming: true,
+		onAbort: () => {
+			aborted += 1;
+		},
+	});
+	const adminCfg = makeTestConfig({
+		commands: { ...cfg.commands, admins: ["user_allowed"] },
+	});
 	const router = new QQRouter(adminCfg, registry, makeApi(sent));
 	// 先入队两条普通消息（第一条运行中，第二条排队）
 	router.handleInbound(msg({ id: "m1" }));
@@ -204,7 +239,9 @@ test("/stop：清队列 + 中止运行中任务", async () => {
 test("progress ack：慢任务先发回执（占 1 次配额）", async () => {
 	const sent: SentMessage[] = [];
 	const registry = new FakeRegistry({ text: "done", delayMs: 200 });
-	const progressCfg = makeTestConfig({ progress: { enabled: true, ackAfterMs: 30 } });
+	const progressCfg = makeTestConfig({
+		progress: { enabled: true, ackAfterMs: 30 },
+	});
 	const router = new QQRouter(progressCfg, registry, makeApi(sent));
 	router.handleInbound(msg());
 	await new Promise((r) => setTimeout(r, 350));
@@ -219,7 +256,12 @@ test("showProcess：最终答案后附加执行摘要", async () => {
 	const registry = new FakeRegistry({
 		text: "完成",
 		tools: [
-			{ toolCallId: "t1", name: "bash", args: { command: "ls" }, isError: false },
+			{
+				toolCallId: "t1",
+				name: "bash",
+				args: { command: "ls" },
+				isError: false,
+			},
 			{ toolCallId: "t2", name: "read", args: {}, isError: true },
 		],
 	});
@@ -237,7 +279,17 @@ test("命令不能与附件同时发送", async () => {
 	const registry = new FakeRegistry();
 	const router = new QQRouter(cfg, registry, makeApi(sent));
 	router.handleInbound(
-		msg({ text: "/stop", attachments: [{ url: "https://example.com/a.png", filename: "a.png", size: 1, contentType: "image/png" }] }),
+		msg({
+			text: "/stop",
+			attachments: [
+				{
+					url: "https://example.com/a.png",
+					filename: "a.png",
+					size: 1,
+					contentType: "image/png",
+				},
+			],
+		}),
 	);
 	await new Promise((r) => setTimeout(r, 50));
 	assert.match(sent[0]?.content ?? "", /不能与附件同时发送/);
@@ -248,11 +300,25 @@ test("/model：精确匹配直接切换", async () => {
 	const sent: SentMessage[] = [];
 	const registry = new FakeRegistry({
 		models: [
-			{ provider: "p1", id: "fast", name: "Fast", input: ["text"], reasoning: false },
-			{ provider: "p2", id: "vision", name: "Vision", input: ["text", "image"], reasoning: true },
+			{
+				provider: "p1",
+				id: "fast",
+				name: "Fast",
+				input: ["text"],
+				reasoning: false,
+			},
+			{
+				provider: "p2",
+				id: "vision",
+				name: "Vision",
+				input: ["text", "image"],
+				reasoning: true,
+			},
 		],
 	});
-	const adminCfg = makeTestConfig({ commands: { ...cfg.commands, admins: ["user_allowed"] } });
+	const adminCfg = makeTestConfig({
+		commands: { ...cfg.commands, admins: ["user_allowed"] },
+	});
 	const router = new QQRouter(adminCfg, registry, makeApi(sent));
 	router.handleInbound(msg({ text: "/model p2/vision" }));
 	await new Promise((r) => setTimeout(r, 50));
@@ -264,14 +330,40 @@ test("/model：多匹配进入选择态，序号选择生效（状态机）", as
 	const sent: SentMessage[] = [];
 	const registry = new FakeRegistry({
 		models: [
-			{ provider: "p1", id: "deep-a", name: "Deep A", input: ["text"], reasoning: true },
-			{ provider: "p2", id: "deep-b", name: "Deep B", input: ["text"], reasoning: true },
-			{ provider: "p3", id: "other", name: "Other", input: ["text"], reasoning: false },
+			{
+				provider: "p1",
+				id: "deep-a",
+				name: "Deep A",
+				input: ["text"],
+				reasoning: true,
+			},
+			{
+				provider: "p2",
+				id: "deep-b",
+				name: "Deep B",
+				input: ["text"],
+				reasoning: true,
+			},
+			{
+				provider: "p3",
+				id: "other",
+				name: "Other",
+				input: ["text"],
+				reasoning: false,
+			},
 		],
 	});
-	const adminCfg = makeTestConfig({ commands: { ...cfg.commands, admins: ["user_allowed"], selectionTtlMs: 5000 } });
+	const adminCfg = makeTestConfig({
+		commands: {
+			...cfg.commands,
+			admins: ["user_allowed"],
+			selectionTtlMs: 5000,
+		},
+	});
 	const stateMachine = new CommandStateMachine(adminCfg.commands);
-	const router = new QQRouter(adminCfg, registry, makeApi(sent), { stateMachine });
+	const router = new QQRouter(adminCfg, registry, makeApi(sent), {
+		stateMachine,
+	});
 	router.handleInbound(msg({ id: "m_q", text: "/model deep" }));
 	await new Promise((r) => setTimeout(r, 50));
 	assert.match(sent[0]?.content ?? "", /找到 2 个匹配项/);
@@ -286,17 +378,43 @@ test("选择态 TTL 过期：序号选择失效", async () => {
 	const sent: SentMessage[] = [];
 	const registry = new FakeRegistry({
 		models: [
-			{ provider: "p1", id: "deep-a", name: "Deep A", input: ["text"], reasoning: true },
-			{ provider: "p2", id: "deep-b", name: "Deep B", input: ["text"], reasoning: true },
+			{
+				provider: "p1",
+				id: "deep-a",
+				name: "Deep A",
+				input: ["text"],
+				reasoning: true,
+			},
+			{
+				provider: "p2",
+				id: "deep-b",
+				name: "Deep B",
+				input: ["text"],
+				reasoning: true,
+			},
 		],
 	});
-	const adminCfg = makeTestConfig({ commands: { ...cfg.commands, admins: ["user_allowed"], selectionTtlMs: 1000 } });
+	const adminCfg = makeTestConfig({
+		commands: {
+			...cfg.commands,
+			admins: ["user_allowed"],
+			selectionTtlMs: 1000,
+		},
+	});
 	const stateMachine = new CommandStateMachine(adminCfg.commands);
-	const router = new QQRouter(adminCfg, registry, makeApi(sent), { stateMachine });
+	const router = new QQRouter(adminCfg, registry, makeApi(sent), {
+		stateMachine,
+	});
 	router.handleInbound(msg({ id: "m_q", text: "/model deep" }));
 	await new Promise((r) => setTimeout(r, 30));
 	// 直接操纵状态机让 pending 过期
-	stateMachine.set("private:user_allowed", "selection", "model", { candidates: [] }, Date.now() - 5000);
+	stateMachine.set(
+		"private:user_allowed",
+		"selection",
+		"model",
+		{ candidates: [] },
+		Date.now() - 5000,
+	);
 	router.handleInbound(msg({ id: "m_sel", text: "/model 1" }));
 	await new Promise((r) => setTimeout(r, 30));
 	assert.match(
@@ -309,11 +427,31 @@ test("选择态 TTL 过期：序号选择失效", async () => {
 test("/sessions 列表 + /resume 唯一匹配恢复", async () => {
 	const sent: SentMessage[] = [];
 	const sessions = [
-		{ path: "/tmp/s1.jsonl", id: "sess-aaaa-1111", name: "项目A", created: new Date(), modified: new Date(), messageCount: 5, firstMessage: "hi", allMessagesText: "" },
-		{ path: "/tmp/s2.jsonl", id: "sess-bbbb-2222", name: "项目B", created: new Date(), modified: new Date(), messageCount: 3, firstMessage: "yo", allMessagesText: "" },
+		{
+			path: "/tmp/s1.jsonl",
+			id: "sess-aaaa-1111",
+			name: "项目A",
+			created: new Date(),
+			modified: new Date(),
+			messageCount: 5,
+			firstMessage: "hi",
+			allMessagesText: "",
+		},
+		{
+			path: "/tmp/s2.jsonl",
+			id: "sess-bbbb-2222",
+			name: "项目B",
+			created: new Date(),
+			modified: new Date(),
+			messageCount: 3,
+			firstMessage: "yo",
+			allMessagesText: "",
+		},
 	];
 	const registry = new FakeRegistry({ sessions });
-	const adminCfg = makeTestConfig({ commands: { ...cfg.commands, admins: ["user_allowed"] } });
+	const adminCfg = makeTestConfig({
+		commands: { ...cfg.commands, admins: ["user_allowed"] },
+	});
 	const router = new QQRouter(adminCfg, registry, makeApi(sent));
 	router.handleInbound(msg({ id: "m_list", text: "/sessions" }));
 	await new Promise((r) => setTimeout(r, 30));
@@ -340,9 +478,19 @@ test("/last：最近活动摘要", async () => {
 test("/status：会话/模型/队列/网关状态", async () => {
 	const sent: SentMessage[] = [];
 	const registry = new FakeRegistry({
-		models: [{ provider: "p1", id: "m1", name: "M1", input: ["text"], reasoning: false }],
+		models: [
+			{
+				provider: "p1",
+				id: "m1",
+				name: "M1",
+				input: ["text"],
+				reasoning: false,
+			},
+		],
 	});
-	const router = new QQRouter(cfg, registry, makeApi(sent), { statusProvider: () => "**connected**（已连接）" });
+	const router = new QQRouter(cfg, registry, makeApi(sent), {
+		statusProvider: () => "**connected**（已连接）",
+	});
 	router.handleInbound(msg({ text: "/status" }));
 	await new Promise((r) => setTimeout(r, 50));
 	assert.match(sent[0]?.content ?? "", /QQ 会话状态/);

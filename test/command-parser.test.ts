@@ -17,7 +17,11 @@ import { makeTestConfig, msg } from "./helpers.ts";
 
 test("parseQQCommand：基本解析", () => {
 	const cmd = parseQQCommand("/model page 2");
-	assert.deepEqual(cmd, { name: "model", args: ["page", "2"], rawArgs: "page 2" });
+	assert.deepEqual(cmd, {
+		name: "model",
+		args: ["page", "2"],
+		rawArgs: "page 2",
+	});
 });
 
 test("parseQQCommand：非命令返回 undefined", () => {
@@ -51,12 +55,25 @@ test("parseQQCommand：非法命令名 / 超长 / 未闭合引号报错", () => 
 
 test("命令集合：白名单与阻塞集合互不重叠", () => {
 	for (const name of QQ_COMMAND_NAMES) {
-		assert.equal(QQ_REMOTE_BLOCKED_COMMANDS.has(name), false, `${name} 不应同时出现在白名单与阻塞集合`);
+		assert.equal(
+			QQ_REMOTE_BLOCKED_COMMANDS.has(name),
+			false,
+			`${name} 不应同时出现在白名单与阻塞集合`,
+		);
 	}
 });
 
 test("mutating 命令列表", () => {
-	for (const name of ["model", "thinking", "new", "resume", "name", "compact", "stop", "workspace"]) {
+	for (const name of [
+		"model",
+		"thinking",
+		"new",
+		"resume",
+		"name",
+		"compact",
+		"stop",
+		"workspace",
+	]) {
 		assert.equal(isMutatingQQCommand(name), true, `${name} 应为 mutation`);
 	}
 	assert.equal(isMutatingQQCommand("help"), false);
@@ -64,53 +81,118 @@ test("mutating 命令列表", () => {
 });
 
 test("授权：未知命令拒绝", () => {
-	const result = authorizeQQCommand(makeTestConfig(), msg(), { name: "frobnicate", args: [], rawArgs: "" });
+	const result = authorizeQQCommand(makeTestConfig(), msg(), {
+		name: "frobnicate",
+		args: [],
+		rawArgs: "",
+	});
 	assert.equal(result.allowed, false);
 	assert.match(result.reason, /未知命令/);
 });
 
 test("授权：危险命令显式阻塞", () => {
-	const result = authorizeQQCommand(makeTestConfig(), msg(), { name: "login", args: [], rawArgs: "" });
+	const result = authorizeQQCommand(makeTestConfig(), msg(), {
+		name: "login",
+		args: [],
+		rawArgs: "",
+	});
 	assert.equal(result.allowed, false);
 	assert.match(result.reason, /受信任的主机终端/);
 });
 
 test("授权：commands.enabled=false 时只放行 help/status/last", () => {
-	const cfg = makeTestConfig({ commands: { ...makeTestConfig().commands, enabled: false } });
-	assert.equal(authorizeQQCommand(cfg, msg(), { name: "help", args: [], rawArgs: "" }).allowed, true);
-	assert.equal(authorizeQQCommand(cfg, msg(), { name: "status", args: [], rawArgs: "" }).allowed, true);
-	assert.equal(authorizeQQCommand(cfg, msg(), { name: "model", args: [], rawArgs: "" }).allowed, false);
+	const cfg = makeTestConfig({
+		commands: { ...makeTestConfig().commands, enabled: false },
+	});
+	assert.equal(
+		authorizeQQCommand(cfg, msg(), { name: "help", args: [], rawArgs: "" })
+			.allowed,
+		true,
+	);
+	assert.equal(
+		authorizeQQCommand(cfg, msg(), { name: "status", args: [], rawArgs: "" })
+			.allowed,
+		true,
+	);
+	assert.equal(
+		authorizeQQCommand(cfg, msg(), { name: "model", args: [], rawArgs: "" })
+			.allowed,
+		false,
+	);
 });
 
 test("授权：mutating 命令需要 admin；help/status 不需要", () => {
 	const cfg = makeTestConfig(); // admins 为空
 	const m = msg({ userOpenId: "user_allowed" });
-	assert.equal(authorizeQQCommand(cfg, m, { name: "help", args: [], rawArgs: "" }).allowed, true);
-	assert.equal(authorizeQQCommand(cfg, m, { name: "new", args: [], rawArgs: "" }).allowed, false);
-	assert.equal(authorizeQQCommand(cfg, m, { name: "model", args: [], rawArgs: "" }).allowed, false);
-	const adminCfg = makeTestConfig({ commands: { ...cfg.commands, admins: ["user_allowed"] } });
-	assert.equal(authorizeQQCommand(adminCfg, m, { name: "new", args: [], rawArgs: "" }).allowed, true);
+	assert.equal(
+		authorizeQQCommand(cfg, m, { name: "help", args: [], rawArgs: "" }).allowed,
+		true,
+	);
+	assert.equal(
+		authorizeQQCommand(cfg, m, { name: "new", args: [], rawArgs: "" }).allowed,
+		false,
+	);
+	assert.equal(
+		authorizeQQCommand(cfg, m, { name: "model", args: [], rawArgs: "" })
+			.allowed,
+		false,
+	);
+	const adminCfg = makeTestConfig({
+		commands: { ...cfg.commands, admins: ["user_allowed"] },
+	});
+	assert.equal(
+		authorizeQQCommand(adminCfg, m, { name: "new", args: [], rawArgs: "" })
+			.allowed,
+		true,
+	);
 });
 
 test("授权：群聊 mutation 需 allowInGroups + admin", () => {
-	const cfg = makeTestConfig({ commands: { ...makeTestConfig().commands, admins: ["admin_openid"], allowInGroups: false } });
-	const groupMsg = msg({ type: "group", userOpenId: "admin_openid", groupOpenId: "group_1" });
-	assert.equal(authorizeQQCommand(cfg, groupMsg, { name: "new", args: [], rawArgs: "" }).allowed, false);
-	const cfg2 = makeTestConfig({ commands: { ...cfg.commands, allowInGroups: true } });
-	assert.equal(authorizeQQCommand(cfg2, groupMsg, { name: "new", args: [], rawArgs: "" }).allowed, true);
+	const cfg = makeTestConfig({
+		commands: {
+			...makeTestConfig().commands,
+			admins: ["admin_openid"],
+			allowInGroups: false,
+		},
+	});
+	const groupMsg = msg({
+		type: "group",
+		userOpenId: "admin_openid",
+		groupOpenId: "group_1",
+	});
+	assert.equal(
+		authorizeQQCommand(cfg, groupMsg, { name: "new", args: [], rawArgs: "" })
+			.allowed,
+		false,
+	);
+	const cfg2 = makeTestConfig({
+		commands: { ...cfg.commands, allowInGroups: true },
+	});
+	assert.equal(
+		authorizeQQCommand(cfg2, groupMsg, { name: "new", args: [], rawArgs: "" })
+			.allowed,
+		true,
+	);
 });
 
 // ── 命令状态机 ────────────────────────────────────────────────────
 
 test("状态机：set/get 同键，TTL 过期清除，新命令覆盖旧", () => {
-	const sm = new CommandStateMachine({ selectionTtlMs: 1000, confirmationTtlMs: 500 });
+	const sm = new CommandStateMachine({
+		selectionTtlMs: 1000,
+		confirmationTtlMs: 500,
+	});
 	const now = 1_000_000;
 	sm.set("key1", "selection", "model", { candidates: [] }, now);
 	assert.equal(sm.get("key1", now)?.command, "model");
 	assert.equal(sm.get("key1", now + 1001), undefined, "TTL 过期清除");
 	sm.set("key1", "selection", "model", { candidates: [] }, now);
 	sm.set("key1", "confirmation", "workspace", {}, now + 10);
-	assert.equal(sm.get("key1", now + 10)?.kind, "confirmation", "新命令覆盖旧 pending");
+	assert.equal(
+		sm.get("key1", now + 10)?.kind,
+		"confirmation",
+		"新命令覆盖旧 pending",
+	);
 	assert.equal(sm.get("key1", now + 600), undefined, "confirmation TTL 更短");
 });
 

@@ -60,7 +60,12 @@ export interface PiQQBridgeConfig {
 		maxTotalBytes: number;
 		downloadTimeoutMs: number;
 		image: { maxBytes: number };
-		voice: { enabled: boolean; preferQQAsr: boolean; maxBytes: number };
+		voice: {
+			enabled: boolean;
+			preferQQAsr: boolean;
+			maxBytes: number;
+			stt?: { baseUrl?: string; apiKeyEnv?: string; model?: string; timeoutMs?: number };
+		};
 		documents: {
 			allowExtensions: string[];
 			maxTxtBytes: number;
@@ -139,7 +144,12 @@ export const DEFAULT_CONFIG: PiQQBridgeConfig = {
 		maxTotalBytes: 31457280,
 		downloadTimeoutMs: 120000,
 		image: { maxBytes: 10485760 },
-		voice: { enabled: true, preferQQAsr: true, maxBytes: 26214400 },
+		voice: {
+			enabled: true,
+			preferQQAsr: true,
+			maxBytes: 26214400,
+			stt: { apiKeyEnv: "QQBOT_STT_API_KEY", model: "whisper-1", timeoutMs: 60000 },
+		},
 		documents: {
 			allowExtensions: [".txt", ".pdf", ".doc"],
 			maxTxtBytes: 2097152,

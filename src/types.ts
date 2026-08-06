@@ -47,3 +47,55 @@ export type QQGatewayStateListener = (
 
 /** 入站消息回调（M1 接入 router） */
 export type QQInboundListener = (msg: QQInboundMessage) => void;
+
+/** 图片内容（进 prompt 的 images[]） */
+export interface QQImageContent {
+	type: "image";
+	source: { type: "base64"; mediaType: string; data: string };
+}
+
+/** 附件分类（嗅探结果） */
+export type QQAttachmentKind =
+	| "image"
+	| "audio"
+	| "pdf"
+	| "doc"
+	| "text"
+	| "archive"
+	| "unknown";
+
+/** 预处理后的单个附件资源 */
+export interface PreparedAttachment {
+	attachment: QQAttachment;
+	kind: QQAttachmentKind;
+	/** 安全化后的原始文件名 */
+	filename: string;
+	status: "ready" | "rejected";
+	/** ready：提取的文本 / 转写文本 / 图片说明 */
+	text?: string;
+	/** ready：图片数据（进 prompt images[]） */
+	image?: QQImageContent;
+	/** rejected：错误码（spec §6.14） */
+	errorCode?: string;
+	/** rejected：用户可读原因 */
+	errorMessage?: string;
+	/** 临时文件路径（消息处理完 cleanup 删除） */
+	path?: string;
+}
+
+/** 预处理后的完整消息（进 agent 的 prompt + images） */
+export interface PreparedQQMessage {
+	prompt: string;
+	images: QQImageContent[];
+	resources: PreparedAttachment[];
+	/** 清理临时文件 */
+	cleanup(): Promise<void>;
+}
+
+/** STT 配置（media.voice.stt） */
+export interface QQMediaSttConfig {
+	baseUrl?: string;
+	apiKeyEnv?: string;
+	model?: string;
+	timeoutMs?: number;
+}

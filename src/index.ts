@@ -22,6 +22,7 @@ import {
 	QQAccessRequestStore,
 	normalizeAccessRole,
 } from "./access-requests.ts";
+import { AttachmentPipeline } from "./attachment-pipeline.ts";
 import { CommandStateMachine } from "./command-controller.ts";
 import {
 	acquireInstanceLock,
@@ -95,8 +96,10 @@ export default function piQQBridge(pi: ExtensionAPI): void {
 		const api = new QQApi(auth, { sandbox: cfg.sandbox });
 		const registry = new ConversationRegistry(cfg, agentDir, cwd);
 		const accessRequests = new QQAccessRequestStore();
+		const attachmentPipeline = new AttachmentPipeline(cfg, `${process.pid}-${Date.now()}`);
 		const router = new QQRouter(cfg, registry, api, {
 			accessRequests,
+			attachmentPipeline,
 			stateMachine: new CommandStateMachine(cfg.commands),
 			statusProvider: () => {
 				const { state, info } = gateway.getState();
@@ -224,19 +227,26 @@ export default function piQQBridge(pi: ExtensionAPI): void {
 			}
 			// 本地视图复用 router 的 /last 逻辑：发送一条伪命令到最近的入站消息不可行，
 			// 因此直接读取 router 内部摘要（M7 移到 terminal-view）
-			ctx.ui.notify("最近活动请通过 QQ 发送 /last 查看（本地视图 M7 提供）", "info");
+			ctx.ui.notify(
+				"最近活动请通过 QQ 发送 /last 查看（本地视图 M7 提供）",
+				"info",
+			);
 		},
 	});
 
 	/** 审批落地：原子更新配置 + 热生效 + QQ 通知（spec §6.13） */
 	const applyApproval = async (
 		cfg: PiQQBridgeConfig,
-		rt: BridgeRuntime,
 		userOpenId: string,
 		role: "user" | "admin",
 	): Promise<void> => {
-		const updated = { ...cfg, allowUsers: [...cfg.allowUsers], commands: { ...cfg.commands, admins: [...cfg.commands.admins] } };
-		if (!updated.allowUsers.includes(userOpenId)) updated.allowUsers.push(userOpenId);
+		const updated = {
+			...cfg,
+			allowUsers: [...cfg.allowUsers],
+			commands: { ...cfg.commands, admins: [...cfg.commands.admins] },
+		};
+		if (!updated.allowUsers.includes(userOpenId))
+			updated.allowUsers.push(userOpenId);
 		if (role === "admin" && !updated.commands.admins.includes(userOpenId)) {
 			updated.commands.admins.push(userOpenId);
 		}
@@ -262,7 +272,10 @@ export default function piQQBridge(pi: ExtensionAPI): void {
 			const lines = [
 				"## 待审批访问申请",
 				"",
-				...requests.map((r) => `- \`${r.code}\` 用户 ${r.userOpenId}（${new Date(r.createdAt).toLocaleTimeString()} 提交）`),
+				...requests.map(
+					(r) =>
+						`- \`${r.code}\` 用户 ${r.userOpenId}（${new Date(r.createdAt).toLocaleTimeString()} 提交）`,
+				),
 				"",
 				"执行 /qqbot-approve <码> <user|admin> 或 /qqbot-deny <码>",
 			];
@@ -292,18 +305,25 @@ export default function piQQBridge(pi: ExtensionAPI): void {
 			}
 			if (role === "admin") {
 				// 授予 admin 需二次确认（spec §6.13）
-				const confirmed = await ctx.ui.confirm("确认", `授予 ${request.userOpenId} 管理员权限？`);
+				const confirmed = await ctx.ui.confirm(
+					"确认",
+					`授予 ${request.userOpenId} 管理员权限？`,
+				);
 				if (!confirmed) {
 					ctx.ui.notify("已取消 admin 授权", "info");
 					return;
 				}
 			}
-			await applyApproval(cfg, rt, request.userOpenId, role);
+			await applyApproval(cfg, request.userOpenId, role);
 			ctx.ui.notify(`已批准 ${request.userOpenId}（${role}）`, "info");
 			// QQ 通知（被动回复引用原消息，60min 窗口内有效）
 			try {
 				await rt.api.sendText(
-					{ type: "private", userOpenId: request.userOpenId, msgId: request.message.id },
+					{
+						type: "private",
+						userOpenId: request.userOpenId,
+						msgId: request.message.id,
+					},
 					`已批准你的访问申请（${role}）。现在可以开始使用了。`,
 					1,
 				);
@@ -327,7 +347,10 @@ export default function piQQBridge(pi: ExtensionAPI): void {
 				ctx.ui.notify(`申请码 ${code} 不存在或已过期`, "error");
 				return;
 			}
-			ctx.ui.notify(`已拒绝 ${request.userOpenId}（1 小时内不再接收其申请）`, "info");
+			ctx.ui.notify(
+				`已拒绝 ${request.userOpenId}（1 小时内不再接收其申请）`,
+				"info",
+			);
 		},
 	});
 
@@ -345,12 +368,22 @@ export default function piQQBridge(pi: ExtensionAPI): void {
 				ctx.ui.notify("用法：/qqbot-revoke <user_openid>", "info");
 				return;
 			}
-			const confirmed = await ctx.ui.confirm("确认", `确认撤销 ${openid} 的全部权限（普通用户 + 管理员）？`);
+			const confirmed = await ctx.ui.confirm(
+				"确认",
+				`确认撤销 ${openid} 的全部权限（普通用户 + 管理员）？`,
+			);
 			if (!confirmed) {
 				ctx.ui.notify("已取消", "info");
 				return;
 			}
-			const updated = { ...cfg, allowUsers: cfg.allowUsers.filter((id) => id !== openid), commands: { ...cfg.commands, admins: cfg.commands.admins.filter((id) => id !== openid) } };
+			const updated = {
+				...cfg,
+				allowUsers: cfg.allowUsers.filter((id) => id !== openid),
+				commands: {
+					...cfg.commands,
+					admins: cfg.commands.admins.filter((id) => id !== openid),
+				},
+			};
 			saveConfig(expandHome(DEFAULT_CONFIG_PATH), updated);
 			cfg.allowUsers = updated.allowUsers;
 			cfg.commands.admins = updated.commands.admins;

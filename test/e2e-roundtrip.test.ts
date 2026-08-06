@@ -16,10 +16,17 @@ import type { QQInboundMessage } from "../src/types.ts";
 test("端到端：C2C 消息 → 隔离会话 → 被动回复（msg_id 引用 + msg_seq=1）", async () => {
 	const mock = await startMockQQServer();
 	try {
-		const auth = new QQAuth("app1", "sec1", { tokenUrl: `${mock.baseUrl}/app/getAppAccessToken` });
-		const gateway = new QQGateway(auth, { sandbox: false, apiBase: mock.baseUrl });
+		const auth = new QQAuth("app1", "sec1", {
+			tokenUrl: `${mock.baseUrl}/app/getAppAccessToken`,
+		});
+		const gateway = new QQGateway(auth, {
+			sandbox: false,
+			apiBase: mock.baseUrl,
+		});
 		const api = new QQApi(auth, { sandbox: false, apiBase: mock.baseUrl });
-		const registry = new FakeRegistry({ text: "处理完成（收到：帮我看看当前目录）" });
+		const registry = new FakeRegistry({
+			text: "处理完成（收到：帮我看看当前目录）",
+		});
 		const router = new QQRouter(makeTestConfig(), registry, api);
 		gateway.onInbound((msg) => router.handleInbound(msg));
 		await gateway.start();
@@ -36,7 +43,11 @@ test("端到端：C2C 消息 → 隔离会话 → 被动回复（msg_id 引用 +
 		const reply = mock.messages[0]!;
 		assert.equal(reply.path, "/v2/users/user_allowed/messages");
 		assert.equal(reply.body.msg_type, 0);
-		assert.equal(reply.body.msg_id, "msg_e2e_1", "被动回复必须引用原消息 msg_id");
+		assert.equal(
+			reply.body.msg_id,
+			"msg_e2e_1",
+			"被动回复必须引用原消息 msg_id",
+		);
 		assert.equal(reply.body.msg_seq, 1);
 		assert.match(String(reply.body.content), /处理完成/);
 
@@ -49,8 +60,13 @@ test("端到端：C2C 消息 → 隔离会话 → 被动回复（msg_id 引用 +
 test("端到端：未授权用户 → 申请码回复，不触发 agent", async () => {
 	const mock = await startMockQQServer();
 	try {
-		const auth = new QQAuth("app1", "sec1", { tokenUrl: `${mock.baseUrl}/app/getAppAccessToken` });
-		const gateway = new QQGateway(auth, { sandbox: false, apiBase: mock.baseUrl });
+		const auth = new QQAuth("app1", "sec1", {
+			tokenUrl: `${mock.baseUrl}/app/getAppAccessToken`,
+		});
+		const gateway = new QQGateway(auth, {
+			sandbox: false,
+			apiBase: mock.baseUrl,
+		});
 		const api = new QQApi(auth, { sandbox: false, apiBase: mock.baseUrl });
 		let agentRuns = 0;
 		const registry: ConversationRegistryLike = {
@@ -90,8 +106,13 @@ test("端到端：未授权用户 → 申请码回复，不触发 agent", async 
 test("端到端：重复推送同 msg_id → 只处理一次", async () => {
 	const mock = await startMockQQServer();
 	try {
-		const auth = new QQAuth("app1", "sec1", { tokenUrl: `${mock.baseUrl}/app/getAppAccessToken` });
-		const gateway = new QQGateway(auth, { sandbox: false, apiBase: mock.baseUrl });
+		const auth = new QQAuth("app1", "sec1", {
+			tokenUrl: `${mock.baseUrl}/app/getAppAccessToken`,
+		});
+		const gateway = new QQGateway(auth, {
+			sandbox: false,
+			apiBase: mock.baseUrl,
+		});
 		const api = new QQApi(auth, { sandbox: false, apiBase: mock.baseUrl });
 		let agentRuns = 0;
 		const registry: ConversationRegistryLike = {
@@ -143,8 +164,13 @@ test("端到端：重复推送同 msg_id → 只处理一次", async () => {
 test("端到端：QQ 命令 /help 走通", async () => {
 	const mock = await startMockQQServer();
 	try {
-		const auth = new QQAuth("app1", "sec1", { tokenUrl: `${mock.baseUrl}/app/getAppAccessToken` });
-		const gateway = new QQGateway(auth, { sandbox: false, apiBase: mock.baseUrl });
+		const auth = new QQAuth("app1", "sec1", {
+			tokenUrl: `${mock.baseUrl}/app/getAppAccessToken`,
+		});
+		const gateway = new QQGateway(auth, {
+			sandbox: false,
+			apiBase: mock.baseUrl,
+		});
 		const api = new QQApi(auth, { sandbox: false, apiBase: mock.baseUrl });
 		const router = new QQRouter(makeTestConfig(), new FakeRegistry(), api);
 		gateway.onInbound((msg) => router.handleInbound(msg));
