@@ -5,6 +5,10 @@
  * 进程级运行时：Symbol.for 全局单例，/reload 后自动重挂（网关不断线）
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { createHash } from "node:crypto";
+import { readFileSync, readdirSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
 	loadConfig,
 	expandHome,
@@ -24,6 +28,7 @@ import {
 } from "./access-requests.ts";
 import { AttachmentPipeline } from "./attachment-pipeline.ts";
 import { WorkspaceRegistry } from "./workspace-registry.ts";
+import { TerminalView } from "./terminal-view.ts";
 import { CommandStateMachine } from "./command-controller.ts";
 import {
 	acquireInstanceLock,
@@ -35,6 +40,24 @@ import {
 /** 进程级运行时（跨 /reload 存活：WS socket 与定时器是进程级的，重新 attach 即可） */
 const RUNTIME_SYMBOL = Symbol.for("pi-qq-bridge.runtime.v1");
 
+/** host 契约（P1-5）：reload 后代码变更 → buildId 变化 → 旧 runtime 必须替换 */
+const HOST_SCHEMA = 1;
+
+function createBuildId(): string {
+	const directory = dirname(fileURLToPath(import.meta.url));
+	const hash = createHash("sha256");
+	const sourceFiles = readdirSync(directory)
+		.filter((filename) => filename.endsWith(".ts") && !filename.endsWith(".test.ts"))
+		.sort();
+	for (const filename of sourceFiles) {
+		hash.update(filename);
+		hash.update(readFileSync(join(directory, filename)));
+	}
+	return `v${HOST_SCHEMA}-${hash.digest("hex").slice(0, 12)}`;
+}
+
+const BUILD_ID = createBuildId();
+
 interface BridgeRuntime {
 	auth: QQAuth;
 	gateway: QQGateway;
@@ -43,8 +66,11 @@ interface BridgeRuntime {
 	router: QQRouter;
 	workspaceRegistry: WorkspaceRegistry;
 	accessRequests: QQAccessRequestStore;
+	view: TerminalView;
 	lock: InstanceLock | null;
 	startedAt: number;
+	hostSchema: number;
+	buildId: string;
 }
 
 interface GlobalWithRuntime {
@@ -89,7 +115,7 @@ export default function piQQBridge(pi: ExtensionAPI): void {
 	/** 组装完整桥接运行时（auth + gateway + api + registry + router）并接线 */
 	const createBridge = (
 		cfg: PiQQBridgeConfig,
-		ctx: { cwd?: string },
+		ctx: { cwd?: string; ui?: { setWidget?: (id: string, lines: string[]) => void } },
 	): BridgeRuntime => {
 		const agentDir = expandHome("~/.pi/agent");
 		const cwd = ctx.cwd ?? process.cwd();
@@ -103,6 +129,9 @@ export default function piQQBridge(pi: ExtensionAPI): void {
 		});
 		const accessRequests = new QQAccessRequestStore();
 		const attachmentPipeline = new AttachmentPipeline(cfg, `${process.pid}-${Date.now()}`);
+		const view = new TerminalView({
+			setWidget: (id, lines) => ctx.ui?.setWidget?.(id, lines),
+		});
 		const router = new QQRouter(cfg, registry, api, {
 			accessRequests,
 			attachmentPipeline,
@@ -112,9 +141,8 @@ export default function piQQBridge(pi: ExtensionAPI): void {
 				const { state, info } = gateway.getState();
 				return `**${state}**${info ? `（${info}）` : ""}`;
 			},
+			onEvent: view.onEvent,
 		});
-		gateway.onInbound((msg) => router.handleInbound(msg));
-		auth.onFatal = (reason) => notify(ctx, `QQ token 刷新连续失败：${reason}`);
 		return {
 			auth,
 			gateway,
@@ -123,8 +151,11 @@ export default function piQQBridge(pi: ExtensionAPI): void {
 			router,
 			workspaceRegistry,
 			accessRequests,
+			view,
 			lock: null,
 			startedAt: Date.now(),
+			hostSchema: HOST_SCHEMA,
+			buildId: BUILD_ID,
 		};
 	};
 
@@ -150,6 +181,7 @@ export default function piQQBridge(pi: ExtensionAPI): void {
 			const rt = createBridge(cfg, ctx);
 			rt.lock = acquired.lock;
 			setRuntime(rt);
+			rt.view.attach();
 			const ok = await rt.gateway.start();
 			if (!ok && rt.lock) {
 				// 启动失败：释放锁，避免占位
@@ -222,6 +254,22 @@ export default function piQQBridge(pi: ExtensionAPI): void {
 				ok ? "QQ 网关已重连" : `重连失败：${rt.gateway.getState().info}`,
 				ok ? "info" : "error",
 			);
+		},
+	});
+
+	pi.registerCommand("qqbot-runtime", {
+		description: "查看扩展 build/Host schema/运行时间（验证 reload 是否生效）",
+		handler: async (_args, ctx) => {
+			const rt = getRuntime();
+			const lines = [
+				"## pi-qq-bridge 运行时",
+				`- Build：\`${BUILD_ID}\``,
+				`- Host schema：${HOST_SCHEMA}`,
+				rt
+					? `- 运行时启动：${new Date(rt.startedAt).toLocaleTimeString()}（build ${rt.buildId}）`
+					: "- 运行时：未启动",
+			];
+			ctx.ui.notify(lines.join("\n"), "info");
 		},
 	});
 
@@ -484,6 +532,7 @@ export default function piQQBridge(pi: ExtensionAPI): void {
 	pi.on("session_start", async (_event, ctx) => {
 		// 进程级运行时已存在（跨 /reload 或跨本地会话）→ 重新 attach，无需重建
 		if (getRuntime()) {
+			getRuntime()?.view.attach();
 			ctx.ui.notify("QQ 网关保持运行（进程级宿主已挂载）", "info");
 			return;
 		}
@@ -505,12 +554,14 @@ export default function piQQBridge(pi: ExtensionAPI): void {
 		const rt = createBridge(cfg, ctx);
 		rt.lock = acquired.lock;
 		setRuntime(rt);
+		rt.view.attach();
 		void rt.gateway.start();
 	});
 
 	pi.on("session_shutdown", async () => {
 		const cfg = loadConfigOnce();
 		const rt = getRuntime();
+		rt?.view.detach();
 		// keepAcrossLocalSessions=false 或未启用进程级保持 → 停止网关
 		if (rt && cfg && !cfg.startup.keepAcrossLocalSessions) {
 			await rt.gateway.stop();
