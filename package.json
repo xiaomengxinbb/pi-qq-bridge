@@ -1,0 +1,38 @@
+{
+  "name": "pi-qq-bridge",
+  "version": "0.1.0",
+  "description": "Pi extension: bidirectional QQ bridge (C2C + group) with isolated agent sessions and /workspace support.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "keywords": [
+    "pi-package",
+    "pi",
+    "pi-extension",
+    "qq",
+    "qqbot",
+    "qq-bot",
+    "coding-agent"
+  ],
+  "files": [
+    "src"
+  ],
+  "pi": {
+    "extensions": [
+      "./src/index.ts"
+    ]
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --test \"test/*.test.ts\"",
+    "spike": "node --experimental-strip-types scripts/spike-sdk.ts"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": ">=0.82.0 <1.0.0"
+  },
+  "engines": {
+    "node": ">=22.19"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2"
+  }
+}

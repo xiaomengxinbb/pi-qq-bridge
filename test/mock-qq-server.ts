@@ -1,0 +1,247 @@
+/**
+ * 本地 mock QQ 平台（测试用）：
+ *   - HTTP: POST /app/getAppAccessToken → token；GET /gateway → {url: ws://...}
+ *   - WS:   握手 → op10 Hello → 等 Identify(op2) → READY → 周期心跳校验
+ * 复用：M1 的 C2C_MESSAGE_CREATE 事件注入也走 sendEvent()。
+ */
+import {
+	createServer,
+	type IncomingMessage,
+	type ServerResponse,
+} from "node:http";
+import { createHash, randomUUID } from "node:crypto";
+import type { Socket } from "node:net";
+
+export interface MockQQServer {
+	baseUrl: string;
+	/** 收到的事件（op0 dispatch 的 t 列表） */
+	events: string[];
+	/** 收到的 Identify 负载（op2.d） */
+	identify?: unknown;
+	/** 收到的心跳 op1 次数 */
+	heartbeatCount: number;
+	/** 收到的被动回复消息（POST /v2/users|groups/{openid}/messages） */
+	messages: Array<{ path: string; body: Record<string, unknown> }>;
+	sendEvent(t: string, d: unknown): void;
+	close(): Promise<void>;
+}
+
+const WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+
+function wsFrame(payload: string): Buffer {
+	const buf = Buffer.from(payload, "utf8");
+	const len = buf.length;
+	let header: Buffer;
+	if (len < 126) {
+		header = Buffer.from([0x81, len]);
+	} else if (len < 65536) {
+		header = Buffer.alloc(4);
+		header[0] = 0x81;
+		header[1] = 126;
+		header.writeUInt16BE(len, 2);
+	} else {
+		header = Buffer.alloc(10);
+		header[0] = 0x81;
+		header[1] = 127;
+		header.writeBigUInt64BE(BigInt(len), 2);
+	}
+	return Buffer.concat([header, buf]);
+}
+
+/** 解析客户端文本帧（客户端帧必须 masked） */
+function decodeClientFrame(data: Buffer): string {
+	if (data.length < 2) return "";
+	const len7 = data[1] & 0x7f;
+	let offset = 2;
+	let len = len7;
+	if (len7 === 126) {
+		len = data.readUInt16BE(2);
+		offset = 4;
+	} else if (len7 === 127) {
+		len = Number(data.readBigUInt64BE(2));
+		offset = 10;
+	}
+	if (data.length < offset + 4 + len) return "";
+	const mask = data.subarray(offset, offset + 4);
+	const payload = data.subarray(offset + 4, offset + 4 + len);
+	const out = Buffer.alloc(len);
+	for (let i = 0; i < len; i++) out[i] = payload[i]! ^ mask[i % 4]!;
+	return out.toString("utf8");
+}
+
+export async function startMockQQServer(): Promise<MockQQServer> {
+	const events: string[] = [];
+	const messages: MockQQServer["messages"] = [];
+	let identify: unknown;
+	let heartbeatCount = 0;
+	let wsSockets: Socket[] = [];
+	const sessionId = randomUUID();
+
+	const httpServer = createServer(
+		(req: IncomingMessage, res: ServerResponse) => {
+			const url = req.url ?? "";
+			if (req.method === "POST" && url.includes("getAppAccessToken")) {
+				res.setHeader("Content-Type", "application/json");
+				res.end(
+					JSON.stringify({ access_token: "MOCK_TOKEN", expires_in: 7200 }),
+				);
+				return;
+			}
+			if (req.method === "GET" && url.endsWith("/gateway")) {
+				const host = req.headers.host ?? "127.0.0.1:1";
+				res.setHeader("Content-Type", "application/json");
+				res.end(JSON.stringify({ url: `ws://${host}/ws` }));
+				return;
+			}
+			res.statusCode = 404;
+			res.end("not found");
+		},
+	);
+
+	const wss = createServer((req: IncomingMessage, res: ServerResponse) => {
+		res.statusCode = 400;
+		res.end("websocket only");
+	});
+
+	wss.on("upgrade", (req: IncomingMessage, socket: Socket) => {
+		const key = req.headers["sec-websocket-key"] as string;
+		if (!key) {
+			socket.destroy();
+			return;
+		}
+		const accept = createHash("sha1")
+			.update(key + WS_GUID)
+			.digest("base64");
+		socket.write(
+			"HTTP/1.1 101 Switching Protocols\r\n" +
+				"Upgrade: websocket\r\n" +
+				"Connection: Upgrade\r\n" +
+				`Sec-WebSocket-Accept: ${accept}\r\n\r\n`,
+		);
+		wsSockets.push(socket);
+		// 先发 op10 Hello（客户端收到后才发 Identify）
+		socket.write(
+			wsFrame(JSON.stringify({ op: 10, d: { heartbeat_interval: 500 } })),
+		);
+		socket.on("data", (chunk: Buffer) => {
+			const text = decodeClientFrame(chunk);
+			if (!text) return;
+			let frame: { op?: number; d?: unknown };
+			try {
+				frame = JSON.parse(text) as { op?: number; d?: unknown };
+			} catch {
+				return;
+			}
+			if (frame.op === 2) {
+				identify = frame.d;
+				// 回复 READY（op0 dispatch, t=READY, s=1）
+				socket.write(
+					wsFrame(
+						JSON.stringify({
+							op: 0,
+							s: 1,
+							t: "READY",
+							d: { session_id: sessionId },
+						}),
+					),
+				);
+			} else if (frame.op === 1) {
+				heartbeatCount += 1;
+				// Heartbeat ACK
+				socket.write(wsFrame(JSON.stringify({ op: 11, d: frame.d ?? 0 })));
+			} else if (frame.op === 6) {
+				// Resume → RESUMED
+				socket.write(
+					wsFrame(JSON.stringify({ op: 0, s: 999, t: "RESUMED", d: {} })),
+				);
+			}
+		});
+		socket.on("close", () => {
+			wsSockets = wsSockets.filter((s) => s !== socket);
+		});
+	});
+
+	await new Promise<void>((resolve) =>
+		httpServer.listen(0, "127.0.0.1", resolve),
+	);
+	await new Promise<void>((resolve) => wss.listen(0, "127.0.0.1", resolve));
+	const httpPort = (httpServer.address() as { port: number }).port;
+	const wsPort = (wss.address() as { port: number }).port;
+
+	// gateway 响应必须指向 WS 端口（此前误用了 http 端口导致客户端连不上）
+	httpServer.removeAllListeners("request");
+	httpServer.on("request", (req: IncomingMessage, res: ServerResponse) => {
+		const url = req.url ?? "";
+		if (req.method === "POST" && url.includes("getAppAccessToken")) {
+			res.setHeader("Content-Type", "application/json");
+			res.end(JSON.stringify({ access_token: "MOCK_TOKEN", expires_in: 7200 }));
+			return;
+		}
+		if (req.method === "GET" && url.endsWith("/gateway")) {
+			res.setHeader("Content-Type", "application/json");
+			res.end(JSON.stringify({ url: `ws://127.0.0.1:${wsPort}/ws` }));
+			return;
+		}
+		if (req.method === "POST" && /\/v2\/(users|groups)\/[^/]+\/messages$/.test(url)) {
+			let raw = "";
+			req.on("data", (chunk) => {
+				raw += chunk.toString();
+			});
+			req.on("end", () => {
+				let body: Record<string, unknown> = {};
+				try {
+					body = JSON.parse(raw) as Record<string, unknown>;
+				} catch {
+					// 保留空 body
+				}
+				messages.push({ path: url, body });
+				res.setHeader("Content-Type", "application/json");
+				res.end(JSON.stringify({ id: `sent_${messages.length}` }));
+			});
+			return;
+		}
+		res.statusCode = 404;
+		res.end("not found");
+	});
+
+	return {
+		baseUrl: `http://127.0.0.1:${httpPort}`,
+		events,
+		get identify() {
+			return identify;
+		},
+		get heartbeatCount() {
+			return heartbeatCount;
+		},
+		messages,
+		sendEvent(t: string, d: unknown) {
+			events.push(t);
+			const payload = JSON.stringify({ op: 0, s: Date.now(), t, d });
+			for (const socket of wsSockets) socket.write(wsFrame(payload));
+		},
+		async close() {
+			for (const socket of wsSockets) socket.destroy();
+			await new Promise<void>((resolve) => wss.close(() => resolve()));
+			await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+		},
+	};
+}
+
+/** 构造一条 C2C 消息事件（M1 测试可复用） */
+export function c2cMessageEvent(overrides: Record<string, unknown> = {}): {
+	t: string;
+	d: unknown;
+} {
+	return {
+		t: "C2C_MESSAGE_CREATE",
+		d: {
+			id: `msg_${randomUUID().slice(0, 8)}`,
+			author: { user_openid: "user_openid_test" },
+			content: "hello",
+			timestamp: String(Math.floor(Date.now() / 1000)),
+			message_type: 0,
+			attachments: [],
+			...overrides,
+		},
+	};
+}

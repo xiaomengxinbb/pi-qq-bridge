@@ -1,0 +1,7 @@
+node_modules/
+*.log
+.DS_Store
+
+# 真实本地配置永不提交
+pi-qq-bridge.json
+pi-qq-bridge.lock
