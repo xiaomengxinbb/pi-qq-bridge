@@ -11,7 +11,12 @@ const SUMMARY_MAX = 120;
 export function extractFinalAssistantText(messages: unknown[]): string {
 	for (let index = messages.length - 1; index >= 0; index--) {
 		const message = messages[index] as
-			| { role?: string; content?: unknown; stopReason?: unknown; errorMessage?: unknown }
+			| {
+					role?: string;
+					content?: unknown;
+					stopReason?: unknown;
+					errorMessage?: unknown;
+			  }
 			| undefined;
 		if (!message || message.role !== "assistant") continue;
 		if (message.stopReason === "error") {
@@ -29,9 +34,13 @@ export function extractFinalAssistantText(messages: unknown[]): string {
 /** 把原始 agent/runtime 错误映射为短小、用户可读的中文文案（稳定错误码见 spec §6.14） */
 export function formatUserFacingAgentError(err: unknown): string {
 	const raw = err instanceof Error ? err.message : String(err);
-	const msg = raw.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim();
+	const msg = raw
+		.replace(/[\u0000-\u001f\u007f]/g, " ")
+		.replace(/\s+/g, " ")
+		.trim();
 	if (!msg) return "处理失败。错误码：AGENT_RUN_FAILED\n\n请稍后重试。";
-	if (/aborted|abort|cancel/i.test(msg)) return "任务已中止。错误码：TASK_ABORTED";
+	if (/aborted|abort|cancel/i.test(msg))
+		return "任务已中止。错误码：TASK_ABORTED";
 	if (/401|403|authentication|unauthorized|api key|invalid.*key/i.test(msg)) {
 		return "模型服务认证失败。错误码：MODEL_AUTH_FAILED\n\n请检查主机上的模型/API 配置后重试。";
 	}
@@ -48,7 +57,10 @@ export function formatUserFacingAgentError(err: unknown): string {
 export function humanizeSessionPreview(text: string): string {
 	if (!text) return "";
 	let value = text.replace(/\r\n?/g, "\n");
-	value = value.replace(/<qq-reply-guidance>[\s\S]*?<\/qq-reply-guidance>/gi, "");
+	value = value.replace(
+		/<qq-reply-guidance>[\s\S]*?<\/qq-reply-guidance>/gi,
+		"",
+	);
 	value = value.replace(/<qq-attachments[\s\S]*?<\/qq-attachments>/gi, "");
 	value = value.replace(/<qq-voice[\s\S]*?<\/qq-voice>/gi, "");
 	value = value.replace(/<attachment\b[^>]*>[\s\S]*?<\/attachment>/gi, "");
@@ -79,5 +91,7 @@ function extractText(content: unknown): string {
 
 function truncatePreview(text: string): string {
 	const oneLine = text.replace(/\s+/g, " ").trim();
-	return oneLine.length > SUMMARY_MAX ? `${oneLine.slice(0, SUMMARY_MAX)}…` : oneLine;
+	return oneLine.length > SUMMARY_MAX
+		? `${oneLine.slice(0, SUMMARY_MAX)}…`
+		: oneLine;
 }

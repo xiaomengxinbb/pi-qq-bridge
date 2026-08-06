@@ -182,7 +182,10 @@ export async function startMockQQServer(): Promise<MockQQServer> {
 			res.end(JSON.stringify({ url: `ws://127.0.0.1:${wsPort}/ws` }));
 			return;
 		}
-		if (req.method === "POST" && /\/v2\/(users|groups)\/[^/]+\/messages$/.test(url)) {
+		if (
+			req.method === "POST" &&
+			/\/v2\/(users|groups)\/[^/]+\/messages$/.test(url)
+		) {
 			let raw = "";
 			req.on("data", (chunk) => {
 				raw += chunk.toString();

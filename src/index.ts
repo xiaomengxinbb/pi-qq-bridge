@@ -10,6 +10,7 @@ import {
 	expandHome,
 	DEFAULT_CONFIG_PATH,
 	ConfigError,
+	saveConfig,
 	type PiQQBridgeConfig,
 } from "./config.ts";
 import { QQAuth } from "./qq-auth.ts";
@@ -17,6 +18,11 @@ import { QQGateway } from "./qq-gateway.ts";
 import { QQApi } from "./qq-api.ts";
 import { ConversationRegistry } from "./conversation-registry.ts";
 import { QQRouter } from "./router.ts";
+import {
+	QQAccessRequestStore,
+	normalizeAccessRole,
+} from "./access-requests.ts";
+import { CommandStateMachine } from "./command-controller.ts";
 import {
 	acquireInstanceLock,
 	ensureLockDir,
@@ -33,6 +39,7 @@ interface BridgeRuntime {
 	api: QQApi;
 	registry: ConversationRegistry;
 	router: QQRouter;
+	accessRequests: QQAccessRequestStore;
 	lock: InstanceLock | null;
 	startedAt: number;
 }
@@ -77,18 +84,37 @@ export default function piQQBridge(pi: ExtensionAPI): void {
 	};
 
 	/** 组装完整桥接运行时（auth + gateway + api + registry + router）并接线 */
-	const createBridge = (cfg: PiQQBridgeConfig, ctx: { cwd?: string }): BridgeRuntime => {
+	const createBridge = (
+		cfg: PiQQBridgeConfig,
+		ctx: { cwd?: string },
+	): BridgeRuntime => {
 		const agentDir = expandHome("~/.pi/agent");
 		const cwd = ctx.cwd ?? process.cwd();
 		const auth = new QQAuth(cfg.appId, cfg.clientSecret, {});
 		const gateway = new QQGateway(auth, { sandbox: cfg.sandbox });
 		const api = new QQApi(auth, { sandbox: cfg.sandbox });
 		const registry = new ConversationRegistry(cfg, agentDir, cwd);
-		const router = new QQRouter(cfg, registry, api);
+		const accessRequests = new QQAccessRequestStore();
+		const router = new QQRouter(cfg, registry, api, {
+			accessRequests,
+			stateMachine: new CommandStateMachine(cfg.commands),
+			statusProvider: () => {
+				const { state, info } = gateway.getState();
+				return `**${state}**${info ? `（${info}）` : ""}`;
+			},
+		});
 		gateway.onInbound((msg) => router.handleInbound(msg));
-		auth.onFatal = (reason) =>
-			notify(ctx, `QQ token 刷新连续失败：${reason}`);
-		return { auth, gateway, api, registry, router, lock: null, startedAt: Date.now() };
+		auth.onFatal = (reason) => notify(ctx, `QQ token 刷新连续失败：${reason}`);
+		return {
+			auth,
+			gateway,
+			api,
+			registry,
+			router,
+			accessRequests,
+			lock: null,
+			startedAt: Date.now(),
+		};
 	};
 
 	pi.registerCommand("qqbot-start", {
@@ -185,6 +211,150 @@ export default function piQQBridge(pi: ExtensionAPI): void {
 				ok ? "QQ 网关已重连" : `重连失败：${rt.gateway.getState().info}`,
 				ok ? "info" : "error",
 			);
+		},
+	});
+
+	pi.registerCommand("qqbot-last", {
+		description: "查看最近 QQ 入站/出站摘要",
+		handler: async (_args, ctx) => {
+			const rt = getRuntime();
+			if (!rt) {
+				ctx.ui.notify("QQ 网关未运行（先 /qqbot-start）", "info");
+				return;
+			}
+			// 本地视图复用 router 的 /last 逻辑：发送一条伪命令到最近的入站消息不可行，
+			// 因此直接读取 router 内部摘要（M7 移到 terminal-view）
+			ctx.ui.notify("最近活动请通过 QQ 发送 /last 查看（本地视图 M7 提供）", "info");
+		},
+	});
+
+	/** 审批落地：原子更新配置 + 热生效 + QQ 通知（spec §6.13） */
+	const applyApproval = async (
+		cfg: PiQQBridgeConfig,
+		rt: BridgeRuntime,
+		userOpenId: string,
+		role: "user" | "admin",
+	): Promise<void> => {
+		const updated = { ...cfg, allowUsers: [...cfg.allowUsers], commands: { ...cfg.commands, admins: [...cfg.commands.admins] } };
+		if (!updated.allowUsers.includes(userOpenId)) updated.allowUsers.push(userOpenId);
+		if (role === "admin" && !updated.commands.admins.includes(userOpenId)) {
+			updated.commands.admins.push(userOpenId);
+		}
+		saveConfig(expandHome(DEFAULT_CONFIG_PATH), updated);
+		// 热生效：router/registry 持有同一 config 引用
+		cfg.allowUsers = updated.allowUsers;
+		cfg.commands.admins = updated.commands.admins;
+	};
+
+	pi.registerCommand("qqbot-requests", {
+		description: "列出待审批的 QQ 访问申请",
+		handler: async (_args, ctx) => {
+			const rt = getRuntime();
+			if (!rt) {
+				ctx.ui.notify("QQ 网关未运行（先 /qqbot-start）", "info");
+				return;
+			}
+			const requests = rt.accessRequests.list();
+			if (!requests.length) {
+				ctx.ui.notify("没有待审批的访问申请", "info");
+				return;
+			}
+			const lines = [
+				"## 待审批访问申请",
+				"",
+				...requests.map((r) => `- \`${r.code}\` 用户 ${r.userOpenId}（${new Date(r.createdAt).toLocaleTimeString()} 提交）`),
+				"",
+				"执行 /qqbot-approve <码> <user|admin> 或 /qqbot-deny <码>",
+			];
+			ctx.ui.notify(lines.join("\n"), "info");
+		},
+	});
+
+	pi.registerCommand("qqbot-approve", {
+		description: "批准访问申请：/qqbot-approve <申请码> <user|admin>",
+		handler: async (args, ctx) => {
+			const rt = getRuntime();
+			const cfg = loadConfigOnce();
+			if (!rt || !cfg) {
+				notify(ctx, "QQ 网关未运行或配置不可用");
+				return;
+			}
+			const [code, roleArg] = (args ?? "").trim().split(/\s+/);
+			const role = normalizeAccessRole(roleArg);
+			if (!code || !role) {
+				ctx.ui.notify("用法：/qqbot-approve <申请码> <user|admin>", "info");
+				return;
+			}
+			const request = rt.accessRequests.approve(code);
+			if (!request) {
+				ctx.ui.notify(`申请码 ${code} 不存在或已过期`, "error");
+				return;
+			}
+			if (role === "admin") {
+				// 授予 admin 需二次确认（spec §6.13）
+				const confirmed = await ctx.ui.confirm("确认", `授予 ${request.userOpenId} 管理员权限？`);
+				if (!confirmed) {
+					ctx.ui.notify("已取消 admin 授权", "info");
+					return;
+				}
+			}
+			await applyApproval(cfg, rt, request.userOpenId, role);
+			ctx.ui.notify(`已批准 ${request.userOpenId}（${role}）`, "info");
+			// QQ 通知（被动回复引用原消息，60min 窗口内有效）
+			try {
+				await rt.api.sendText(
+					{ type: "private", userOpenId: request.userOpenId, msgId: request.message.id },
+					`已批准你的访问申请（${role}）。现在可以开始使用了。`,
+					1,
+				);
+			} catch {
+				// 通知失败（如窗口过期）不影响授权生效
+			}
+		},
+	});
+
+	pi.registerCommand("qqbot-deny", {
+		description: "拒绝访问申请：/qqbot-deny <申请码>",
+		handler: async (args, ctx) => {
+			const rt = getRuntime();
+			if (!rt) {
+				notify(ctx, "QQ 网关未运行（先 /qqbot-start）");
+				return;
+			}
+			const code = (args ?? "").trim();
+			const request = rt.accessRequests.deny(code);
+			if (!request) {
+				ctx.ui.notify(`申请码 ${code} 不存在或已过期`, "error");
+				return;
+			}
+			ctx.ui.notify(`已拒绝 ${request.userOpenId}（1 小时内不再接收其申请）`, "info");
+		},
+	});
+
+	pi.registerCommand("qqbot-revoke", {
+		description: "撤销用户权限：/qqbot-revoke <user_openid>",
+		handler: async (args, ctx) => {
+			const rt = getRuntime();
+			const cfg = loadConfigOnce();
+			if (!rt || !cfg) {
+				notify(ctx, "QQ 网关未运行或配置不可用");
+				return;
+			}
+			const openid = (args ?? "").trim();
+			if (!openid) {
+				ctx.ui.notify("用法：/qqbot-revoke <user_openid>", "info");
+				return;
+			}
+			const confirmed = await ctx.ui.confirm("确认", `确认撤销 ${openid} 的全部权限（普通用户 + 管理员）？`);
+			if (!confirmed) {
+				ctx.ui.notify("已取消", "info");
+				return;
+			}
+			const updated = { ...cfg, allowUsers: cfg.allowUsers.filter((id) => id !== openid), commands: { ...cfg.commands, admins: cfg.commands.admins.filter((id) => id !== openid) } };
+			saveConfig(expandHome(DEFAULT_CONFIG_PATH), updated);
+			cfg.allowUsers = updated.allowUsers;
+			cfg.commands.admins = updated.commands.admins;
+			ctx.ui.notify(`已撤销 ${openid} 的权限`, "info");
 		},
 	});
 

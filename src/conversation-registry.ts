@@ -50,11 +50,19 @@ export class ConversationRegistry {
 		let entry = this.entries.get(key);
 		if (!entry) {
 			await this.evictIfNeeded();
-			entry = { key, session: this.sessionFactory.create(), lastUsedAt: Date.now() };
+			entry = {
+				key,
+				session: this.sessionFactory.create(),
+				lastUsedAt: Date.now(),
+			};
 			this.entries.set(key, entry);
-			const sessionDir = this.config.sessions.mode === "persistent" ? this.sessionDirFor(key) : undefined;
+			const sessionDir =
+				this.config.sessions.mode === "persistent"
+					? this.sessionDirFor(key)
+					: undefined;
 			entry.initializing = (async () => {
-				if (sessionDir) await mkdir(sessionDir, { recursive: true, mode: 0o700 });
+				if (sessionDir)
+					await mkdir(sessionDir, { recursive: true, mode: 0o700 });
 				await entry?.session.init(this.cwd, {
 					sessionDir,
 					persistent: this.config.sessions.mode === "persistent",
@@ -97,7 +105,10 @@ export class ConversationRegistry {
 	private async evictExpired(): Promise<void> {
 		const cutoff = Date.now() - this.config.sessions.idleDisposeMs;
 		const expired = [...this.entries.values()].filter(
-			(entry) => entry.lastUsedAt < cutoff && !entry.session.isStreaming() && !entry.initializing,
+			(entry) =>
+				entry.lastUsedAt < cutoff &&
+				!entry.session.isStreaming() &&
+				!entry.initializing,
 		);
 		for (const entry of expired) {
 			if (this.entries.get(entry.key) !== entry) continue;
@@ -118,11 +129,16 @@ export class ConversationRegistry {
 	}
 
 	private sessionDirFor(key: string): string {
-		const hash = createHash("sha256").update(`pi-qq-bridge\0${key}`).digest("hex").slice(0, 32);
+		const hash = createHash("sha256")
+			.update(`pi-qq-bridge\0${key}`)
+			.digest("hex")
+			.slice(0, 32);
 		return join(this.agentDir, "pi-qq-bridge", "sessions", hash);
 	}
 }
 
 export function conversationKey(msg: QQInboundMessage): string {
-	return msg.type === "private" ? `private:${msg.userOpenId}` : `group:${msg.groupOpenId ?? ""}`;
+	return msg.type === "private"
+		? `private:${msg.userOpenId}`
+		: `group:${msg.groupOpenId ?? ""}`;
 }

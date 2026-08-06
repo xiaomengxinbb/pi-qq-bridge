@@ -4,7 +4,12 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createServer, type IncomingMessage, type ServerResponse, type Server } from "node:http";
+import {
+	createServer,
+	type IncomingMessage,
+	type ServerResponse,
+	type Server,
+} from "node:http";
 import { QQApi, QQApiError } from "../src/qq-api.ts";
 import { QQAuth } from "../src/qq-auth.ts";
 
@@ -15,12 +20,19 @@ interface CapturedRequest {
 }
 
 async function withApiServer(
-	handleMessage: (req: IncomingMessage, res: ServerResponse, captured: CapturedRequest[]) => void,
+	handleMessage: (
+		req: IncomingMessage,
+		res: ServerResponse,
+		captured: CapturedRequest[],
+	) => void,
 	fn: (baseUrl: string, captured: CapturedRequest[]) => Promise<void>,
 ): Promise<void> {
 	const captured: CapturedRequest[] = [];
 	const server: Server = createServer((req, res) => {
-		if (req.method === "POST" && (req.url ?? "").includes("getAppAccessToken")) {
+		if (
+			req.method === "POST" &&
+			(req.url ?? "").includes("getAppAccessToken")
+		) {
 			res.setHeader("Content-Type", "application/json");
 			res.end(JSON.stringify({ access_token: "TOKEN_ABC", expires_in: 7200 }));
 			return;
@@ -36,7 +48,11 @@ async function withApiServer(
 			} catch {
 				// 保留空 body
 			}
-			captured.push({ path: req.url ?? "", authorization: req.headers.authorization, body });
+			captured.push({
+				path: req.url ?? "",
+				authorization: req.headers.authorization,
+				body,
+			});
 			handleMessage(req, res, captured);
 		});
 	});
@@ -49,7 +65,11 @@ async function withApiServer(
 	}
 }
 
-const target = { type: "private" as const, userOpenId: "openid_1", msgId: "msg_42" };
+const target = {
+	type: "private" as const,
+	userOpenId: "openid_1",
+	msgId: "msg_42",
+};
 
 test("sendText：路径/鉴权头/body（msg_type=0 + msg_id + msg_seq）", async () => {
 	await withApiServer(
@@ -58,7 +78,9 @@ test("sendText：路径/鉴权头/body（msg_type=0 + msg_id + msg_seq）", asyn
 			res.end(JSON.stringify({ id: "new_msg_id" }));
 		},
 		async (baseUrl, captured) => {
-			const auth = new QQAuth("app1", "sec1", { tokenUrl: `${baseUrl}/app/getAppAccessToken` });
+			const auth = new QQAuth("app1", "sec1", {
+				tokenUrl: `${baseUrl}/app/getAppAccessToken`,
+			});
 			const api = new QQApi(auth, { sandbox: false, apiBase: baseUrl });
 			await api.sendText(target, "你好", 3);
 			assert.equal(captured.length, 1);
@@ -85,7 +107,9 @@ test("401：forceRefresh 后重试一次成功", async () => {
 			res.end(JSON.stringify({ id: "retry_ok" }));
 		},
 		async (baseUrl) => {
-			const auth = new QQAuth("app1", "sec1", { tokenUrl: `${baseUrl}/app/getAppAccessToken` });
+			const auth = new QQAuth("app1", "sec1", {
+				tokenUrl: `${baseUrl}/app/getAppAccessToken`,
+			});
 			const api = new QQApi(auth, { sandbox: false, apiBase: baseUrl });
 			await api.sendText(target, "hi", 1);
 			assert.equal(calls, 2, "401 后应重试一次");
@@ -100,12 +124,17 @@ test("HTTP 500：抛 QQApiError（status/code/requestAccepted）", async () => {
 			res.end(JSON.stringify({ code: 50001, message: "rate limited" }));
 		},
 		async (baseUrl) => {
-			const auth = new QQAuth("app1", "sec1", { tokenUrl: `${baseUrl}/app/getAppAccessToken` });
+			const auth = new QQAuth("app1", "sec1", {
+				tokenUrl: `${baseUrl}/app/getAppAccessToken`,
+			});
 			const api = new QQApi(auth, { sandbox: false, apiBase: baseUrl });
 			await assert.rejects(
 				() => api.sendText(target, "hi", 1),
 				(err: unknown) =>
-					err instanceof QQApiError && err.status === 500 && err.code === 50001 && err.requestAccepted === true,
+					err instanceof QQApiError &&
+					err.status === 500 &&
+					err.code === 50001 &&
+					err.requestAccepted === true,
 			);
 		},
 	);
@@ -118,8 +147,13 @@ test("网络失败：QQApiError status=0", async () => {
 			res.end(JSON.stringify({ id: "x" }));
 		},
 		async (baseUrl) => {
-			const auth = new QQAuth("app1", "sec1", { tokenUrl: `${baseUrl}/app/getAppAccessToken` });
-			const api = new QQApi(auth, { sandbox: false, apiBase: "http://127.0.0.1:1" });
+			const auth = new QQAuth("app1", "sec1", {
+				tokenUrl: `${baseUrl}/app/getAppAccessToken`,
+			});
+			const api = new QQApi(auth, {
+				sandbox: false,
+				apiBase: "http://127.0.0.1:1",
+			});
 			await assert.rejects(
 				() => api.sendText(target, "hi", 1),
 				(err: unknown) => err instanceof QQApiError && err.status === 0,

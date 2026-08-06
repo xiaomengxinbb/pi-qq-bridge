@@ -27,7 +27,7 @@ Pi × QQ 双向通信扩展（pi 官方 extension）。通过 QQ 官方机器人
 ```bash
 # 开发
 npm install
-npm test          # 78 个测试（config/auth/gateway/instance-guard）
+npm test          # 88 个测试（config/auth/gateway/lock/router/命令/审批）
 npm run typecheck
 
 # 使用：复制示例配置
@@ -38,7 +38,7 @@ chmod 600 ~/.pi/agent/pi-qq-bridge.json
 
 配置 schemaVersion=4，**不兼容旧版本**（拒绝启动并提示重新生成，不静默迁移）。
 
-## 本地 Pi 命令（M0/M1 已实现）
+## 本地 Pi 命令（M0-M2 已实现）
 
 | 命令 | 作用 |
 | --- | --- |
@@ -55,7 +55,7 @@ chmod 600 ~/.pi/agent/pi-qq-bridge.json
 | --- | --- | --- |
 | M0 | ✅ | 骨架 + config + auth + gateway + 单实例锁 + 测试 |
 | M1 | ✅ | 文本私聊闭环：inbound 归一化 → 隔离会话 → 被动回复；去重/回复预算/白名单 |
-| M2 | ⏳ | 命令体系：状态机 TTL + 审批四件套 + Keyboard |
+| M2 | ✅ | 命令体系：状态机 TTL + 审批四件套 + Keyboard + showProcess/progress ack |
 | M3 | ⏳ | 多媒体入站：图片/语音/文档 + STT/PDF |
 | M4 | ⏳ | 群聊（GROUP_AT）+ allowGroups |
 | M5 | ⏳ | `/workspace`：注册表 + 切换 + 会话隔离 |

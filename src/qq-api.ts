@@ -21,7 +21,12 @@ export class QQApiError extends Error {
 	readonly code?: number;
 	readonly requestAccepted: boolean;
 
-	constructor(message: string, status: number, code?: number, requestAccepted = false) {
+	constructor(
+		message: string,
+		status: number,
+		code?: number,
+		requestAccepted = false,
+	) {
 		super(message);
 		this.name = "QQApiError";
 		this.status = status;
@@ -42,12 +47,26 @@ export class QQApi {
 		this.base = options.apiBase ?? (options.sandbox ? SANDBOX_BASE : PROD_BASE);
 	}
 
-	/** 纯文本被动回复（msg_type:0） */
-	async sendText(target: QQReplyTarget, content: string, msgSeq: number): Promise<void> {
-		await this.send(target, { content, msg_type: 0, msg_id: target.msgId, msg_seq: msgSeq });
+	/** 纯文本被动回复（msg_type:0，可选键盘） */
+	async sendText(
+		target: QQReplyTarget,
+		content: string,
+		msgSeq: number,
+		keyboard?: unknown,
+	): Promise<void> {
+		await this.send(target, {
+			content,
+			msg_type: 0,
+			msg_id: target.msgId,
+			msg_seq: msgSeq,
+			...(keyboard ? { keyboard } : {}),
+		});
 	}
 
-	private async send(target: QQReplyTarget, payload: Record<string, unknown>): Promise<void> {
+	private async send(
+		target: QQReplyTarget,
+		payload: Record<string, unknown>,
+	): Promise<void> {
 		const path =
 			target.type === "private"
 				? `/v2/users/${encodeURIComponent(target.userOpenId ?? "")}/messages`
@@ -77,7 +96,10 @@ export class QQApi {
 		try {
 			res = await fetch(`${this.base}${path}`, {
 				method: "POST",
-				headers: { "Content-Type": "application/json", Authorization: `QQBot ${token}` },
+				headers: {
+					"Content-Type": "application/json",
+					Authorization: `QQBot ${token}`,
+				},
 				body: JSON.stringify(payload),
 				signal: requestSignal,
 			});

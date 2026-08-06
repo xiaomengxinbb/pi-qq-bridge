@@ -90,8 +90,19 @@ test("入站事件归一化：C2C_MESSAGE_CREATE → QQInboundMessage", async ()
 			author: { user_openid: "openid_xyz" },
 			content: "看下目录",
 			attachments: [
-				{ url: "https://example.com/a.png", filename: "a.png", size: 100, content_type: "image/png" },
-				{ url: "https://example.com/v.silk", filename: "v.silk", size: 50, content_type: "voice", asr_refer_text: "语音转写文本" },
+				{
+					url: "https://example.com/a.png",
+					filename: "a.png",
+					size: 100,
+					content_type: "image/png",
+				},
+				{
+					url: "https://example.com/v.silk",
+					filename: "v.silk",
+					size: 50,
+					content_type: "voice",
+					asr_refer_text: "语音转写文本",
+				},
 			],
 		});
 		mock.sendEvent(evt.t, evt.d);

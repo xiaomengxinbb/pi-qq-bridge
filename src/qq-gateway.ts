@@ -315,7 +315,11 @@ export class QQGateway {
 			}>;
 		};
 		if (typeof data.id !== "string" || data.id === "") return;
-		if (typeof data.author?.user_openid !== "string" || data.author.user_openid === "") return;
+		if (
+			typeof data.author?.user_openid !== "string" ||
+			data.author.user_openid === ""
+		)
+			return;
 		const msg: QQInboundMessage = {
 			id: data.id,
 			type: "private",
@@ -328,10 +332,14 @@ export class QQGateway {
 							url: a.url as string,
 							filename: typeof a.filename === "string" ? a.filename : "",
 							size: typeof a.size === "number" ? a.size : 0,
-							contentType: typeof a.content_type === "string" ? a.content_type : "",
+							contentType:
+								typeof a.content_type === "string" ? a.content_type : "",
 							width: typeof a.width === "number" ? a.width : undefined,
 							height: typeof a.height === "number" ? a.height : undefined,
-							asrReferText: typeof a.asr_refer_text === "string" ? a.asr_refer_text : undefined,
+							asrReferText:
+								typeof a.asr_refer_text === "string"
+									? a.asr_refer_text
+									: undefined,
 						}))
 				: [],
 			receivedAt: Date.now(),
