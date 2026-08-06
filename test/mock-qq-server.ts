@@ -248,3 +248,20 @@ export function c2cMessageEvent(overrides: Record<string, unknown> = {}): {
 		},
 	};
 }
+
+/** 构造一条群 @ 消息事件（M4 测试用） */
+export function groupAtMessageEvent(overrides: Record<string, unknown> = {}): { t: string; d: unknown } {
+	return {
+		t: "GROUP_AT_MESSAGE_CREATE",
+		d: {
+			id: `group_msg_${randomUUID().slice(0, 8)}`,
+			author: { user_openid: "group_user_1" },
+			content: "群消息内容",
+			timestamp: String(Math.floor(Date.now() / 1000)),
+			group_openid: "group_openid_1",
+			message_type: 0,
+			attachments: [],
+			...overrides,
+		},
+	};
+}

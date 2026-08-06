@@ -45,7 +45,6 @@ export class QQGateway {
 	private state: QQGatewayState = "disconnected";
 	private stateInfo = "";
 	private heartbeatTimer: ReturnType<typeof setInterval> | undefined;
-	private heartbeatAckPending = false;
 	private sessionId: string | undefined;
 	private lastSeq = 0;
 	private reconnectAttempts = 0;
@@ -59,11 +58,9 @@ export class QQGateway {
 	private readonly reconnectMaxMs: number;
 
 	private readonly auth: QQAuth;
-	private readonly options: QQGatewayOptions;
 
 	constructor(auth: QQAuth, options: QQGatewayOptions) {
 		this.auth = auth;
-		this.options = options;
 		this.apiBase =
 			options.apiBase ??
 			(options.sandbox
@@ -253,10 +250,9 @@ export class QQGateway {
 				this.ws?.send(JSON.stringify(payload));
 				break;
 			}
-			case OP_HEARTBEAT_ACK: {
-				this.heartbeatAckPending = false;
+			case OP_HEARTBEAT_ACK:
+				// 心跳已确认（ACK 超时检测 M7 加固）
 				break;
-			}
 			case OP_DISPATCH: {
 				if (typeof frame.s === "number") this.lastSeq = frame.s;
 				if (frame.t === "READY") {
@@ -299,11 +295,12 @@ export class QQGateway {
 	}
 
 	private dispatchEvent(t: string, d: unknown): void {
-		if (t !== "C2C_MESSAGE_CREATE") return; // M1 仅私聊；GROUP_AT_MESSAGE_CREATE 在 M4
+		if (t !== "C2C_MESSAGE_CREATE" && t !== "GROUP_AT_MESSAGE_CREATE") return;
 		const data = d as {
 			id?: unknown;
 			author?: { user_openid?: unknown };
 			content?: unknown;
+			group_openid?: unknown;
 			attachments?: Array<{
 				url?: unknown;
 				filename?: unknown;
@@ -320,11 +317,15 @@ export class QQGateway {
 			data.author.user_openid === ""
 		)
 			return;
+		const isGroup = t === "GROUP_AT_MESSAGE_CREATE";
+		const groupOpenId = isGroup && typeof data.group_openid === "string" ? data.group_openid : undefined;
+		if (isGroup && !groupOpenId) return;
 		const msg: QQInboundMessage = {
 			id: data.id,
-			type: "private",
+			type: isGroup ? "group" : "private",
 			text: typeof data.content === "string" ? data.content : "",
 			userOpenId: data.author.user_openid,
+			groupOpenId,
 			attachments: Array.isArray(data.attachments)
 				? data.attachments
 						.filter((a) => a && typeof a.url === "string")
@@ -353,7 +354,6 @@ export class QQGateway {
 		this.heartbeatTimer = setInterval(() => {
 			if (!this.ws) return;
 			this.ws.send(JSON.stringify({ op: OP_HEARTBEAT, d: this.lastSeq }));
-			this.heartbeatAckPending = true;
 		}, intervalMs);
 		this.heartbeatTimer.unref?.();
 	}
@@ -363,7 +363,6 @@ export class QQGateway {
 			clearInterval(this.heartbeatTimer);
 			this.heartbeatTimer = undefined;
 		}
-		this.heartbeatAckPending = false;
 	}
 
 	private scheduleReconnect(reason: string): void {
