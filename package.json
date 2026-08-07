@@ -45,11 +45,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/pi-qq-bridge/pi-qq-bridge.git"
+    "url": "git+https://github.com/xiaomengxinbb/pi-qq-bridge.git"
   },
-  "homepage": "https://github.com/pi-qq-bridge/pi-qq-bridge#readme",
+  "homepage": "https://github.com/xiaomengxinbb/pi-qq-bridge#readme",
   "bugs": {
-    "url": "https://github.com/pi-qq-bridge/pi-qq-bridge/issues"
+    "url": "https://github.com/xiaomengxinbb/pi-qq-bridge/issues"
   },
   "publishConfig": {
     "access": "public"

@@ -61,8 +61,13 @@ function createBuildId(): string {
 			const full = join(dir, entry.name);
 			if (entry.isDirectory()) {
 				walk(full);
-			} else if (entry.name.endsWith(".ts") && !entry.name.endsWith(".test.ts")) {
-				sourceFiles.push(full.slice(directory.length + 1).replaceAll("\\", "/"));
+			} else if (
+				entry.name.endsWith(".ts") &&
+				!entry.name.endsWith(".test.ts")
+			) {
+				sourceFiles.push(
+					full.slice(directory.length + 1).replaceAll("\\", "/"),
+				);
 			}
 		}
 	};

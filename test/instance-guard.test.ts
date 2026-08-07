@@ -12,7 +12,11 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { acquireInstanceLock, ensureLockDir, isLockHeldByMe } from "../src/instance-guard.ts";
+import {
+	acquireInstanceLock,
+	ensureLockDir,
+	isLockHeldByMe,
+} from "../src/instance-guard.ts";
 
 function makeLockPath(): string {
 	const dir = mkdtempSync(join(tmpdir(), "pi-qq-bridge-lock-test-"));
@@ -105,10 +109,18 @@ test("isLockHeldByMe：本进程持有返回 true；他人持有/文件缺失返
 	ensureLockDir(lockPath);
 	try {
 		// 写入本进程 pid
-		writeFileSync(lockPath, JSON.stringify({ pid: process.pid, startedAt: Date.now() }), { mode: 0o600 });
+		writeFileSync(
+			lockPath,
+			JSON.stringify({ pid: process.pid, startedAt: Date.now() }),
+			{ mode: 0o600 },
+		);
 		assert.equal(isLockHeldByMe(lockPath), true);
 		// 写入其他 pid
-		writeFileSync(lockPath, JSON.stringify({ pid: 99999999, startedAt: Date.now() }), { mode: 0o600 });
+		writeFileSync(
+			lockPath,
+			JSON.stringify({ pid: 99999999, startedAt: Date.now() }),
+			{ mode: 0o600 },
+		);
 		assert.equal(isLockHeldByMe(lockPath), false);
 		// 文件不存在
 		rmSync(lockPath, { force: true });
