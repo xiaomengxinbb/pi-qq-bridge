@@ -6,7 +6,7 @@
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { createHash } from "node:crypto";
-import { readFileSync, readdirSync, appendFileSync } from "node:fs";
+import { readFileSync, readdirSync, appendFileSync, rmSync } from "node:fs";
 
 /** 调试日志辅助（避免闭包内 require） */
 function requireNodeFsForLog(): {
@@ -40,6 +40,7 @@ import { CommandStateMachine } from "./commands/command-controller.ts";
 import {
 	acquireInstanceLock,
 	ensureLockDir,
+	isLockHeldByMe,
 	DEFAULT_LOCK_PATH,
 	type InstanceLock,
 } from "./instance-guard.ts";
@@ -86,6 +87,8 @@ interface BridgeRuntime {
 	accessRequests: QQAccessRequestStore;
 	viewHolder: { current: TerminalView };
 	lock: InstanceLock | null;
+	/** 锁归属定期校验（防止锁丢失后旧连接残留 → 双连接） */
+	lockCheckTimer: ReturnType<typeof setInterval> | undefined;
 	startedAt: number;
 	hostSchema: number;
 	buildId: string;
@@ -188,7 +191,7 @@ export default function piQQBridge(pi: ExtensionAPI): void {
 		});
 		gateway.onInbound((msg) => router.handleInbound(msg));
 		auth.onFatal = (reason) => notify(ctx, `QQ token 刷新连续失败：${reason}`);
-		return {
+		const rt: BridgeRuntime = {
 			auth,
 			gateway,
 			api,
@@ -198,10 +201,21 @@ export default function piQQBridge(pi: ExtensionAPI): void {
 			accessRequests,
 			viewHolder,
 			lock: null,
+			lockCheckTimer: undefined,
 			startedAt: Date.now(),
 			hostSchema: HOST_SCHEMA,
 			buildId: BUILD_ID,
 		};
+		// 锁归属校验：锁不在本进程 → 主动断开网关（防双连接）
+		// 场景：锁被其他进程抢走/被删（陈旧清理、stop 释放），旧连接必须随之关闭
+		rt.lockCheckTimer = setInterval(() => {
+			if (rt.lock && !isLockHeldByMe(rt.lock.path)) {
+				debugLog?.("[lock] 锁已不在本进程，主动断开网关（防双连接）");
+				void rt.gateway.stop();
+			}
+		}, 30_000);
+		rt.lockCheckTimer.unref?.();
+		return rt;
 	};
 
 	pi.registerCommand("qqbot-start", {
@@ -621,13 +635,26 @@ export default function piQQBridge(pi: ExtensionAPI): void {
 		rt.lock = acquired.lock;
 		setRuntime(rt);
 		rt.viewHolder.current.attach();
-		void rt.gateway.start();
+		void rt.gateway.start().then((ok) => {
+			if (!ok && rt.lock) {
+				// 启动失败：释放锁，避免占位（与 /qqbot-start 一致）
+				try {
+					rmSync(rt.lock.path, { force: true });
+				} catch {
+					// 陈旧锁下次启动会被 stale 检测回收
+				}
+			}
+		});
 	});
 
 	pi.on("session_shutdown", async () => {
 		const cfg = loadConfigOnce();
 		const rt = getRuntime();
 		rt?.viewHolder.current.detach();
+		if (rt?.lockCheckTimer) {
+			clearInterval(rt.lockCheckTimer);
+			rt.lockCheckTimer = undefined;
+		}
 		// keepAcrossLocalSessions=false 或未启用进程级保持 → 停止网关
 		if (rt && cfg && !cfg.startup.keepAcrossLocalSessions) {
 			await rt.gateway.stop();

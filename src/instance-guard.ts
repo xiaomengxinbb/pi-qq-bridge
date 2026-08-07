@@ -127,6 +127,16 @@ function registerExitCleanup(lock: InstanceLock): void {
 	process.once("unhandledRejection", release);
 }
 
+/** 锁是否仍归当前进程所有（定期校验用：锁丢失/被转移 → 调用方应断开网关） */
+export function isLockHeldByMe(lockPath: string): boolean {
+	try {
+		const data = JSON.parse(readFileSync(lockPath, "utf8")) as { pid?: unknown };
+		return data.pid === process.pid;
+	} catch {
+		return false;
+	}
+}
+
 /** 目录存在性辅助（锁文件父目录） */
 export function ensureLockDir(lockPath: string): void {
 	const dir = dirname(lockPath);
