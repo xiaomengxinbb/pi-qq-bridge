@@ -53,9 +53,11 @@ export function resolveSdkEntry(): string {
 export function isPiQQBridgeExtensionPath(path: string | undefined): boolean {
 	if (!path) return false;
 	const normalized = path.replaceAll("\\", "/");
-	return (
-		normalized.includes("pi-qq-bridge") || normalized.includes("qq-bridge")
-	);
+	if (normalized.includes("pi-qq-bridge") || normalized.includes("qq-bridge"))
+		return true;
+	// 安装/开发路径可能以项目目录名出现（如 /home/lizhi/qqbot/src/index.ts）
+	const segments = normalized.split("/");
+	return segments.includes("qqbot");
 }
 
 type SdkModule = Record<string, unknown>;

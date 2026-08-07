@@ -111,6 +111,12 @@ async function main(): Promise<void> {
 	process.exit(0);
 }
 
+process.on("exit", (code) => console.log(`[smoke] ⚠️ 进程退出 code=${code}`));
+process.on("SIGTERM", () => { console.log("[smoke] ⚠️ 收到 SIGTERM"); process.exit(143); });
+process.on("SIGINT", () => { console.log("[smoke] ⚠️ 收到 SIGINT"); process.exit(130); });
+process.on("uncaughtException", (err) => { console.error(`[smoke] ❌ uncaughtException: ${err.stack ?? err}`); process.exit(1); });
+process.on("unhandledRejection", (reason) => { console.error(`[smoke] ❌ unhandledRejection: ${reason instanceof Error ? reason.stack ?? reason.message : String(reason)}`); process.exit(1); });
+
 main().catch((err) => {
 	console.error(
 		`[smoke] ❌ 失败: ${err instanceof Error ? err.message : String(err)}`,

@@ -31,10 +31,7 @@ import type { WorkspaceRegistry } from "./workspace-registry.ts";
 import { QQOutboundDeliveryContext } from "./outbound-media.ts";
 import { formatQQReply } from "./reply-formatter.ts";
 import type { QQInboundMessage, QQReplyTarget } from "./types.ts";
-import type {
-	QQSessionInfo,
-	QQSessionLike,
-} from "./qq-session.ts";
+import type { QQSessionInfo, QQSessionLike } from "./qq-session.ts";
 
 /** 注册表结构接口（ConversationRegistry 结构兼容） */
 export interface ConversationRegistryLike {
@@ -1017,7 +1014,12 @@ export class QQRouter {
 					}
 				}
 				this.recordOutbound(msg, chunk, seq);
-				this.emit({ kind: "reply", messageId: msg.id, msgSeq: seq, content: chunk });
+				this.emit({
+					kind: "reply",
+					messageId: msg.id,
+					msgSeq: seq,
+					content: chunk,
+				});
 			} catch (err) {
 				// 回复失败不抛出（避免队列卡死）；命令场景由调用方处理
 				if (!(err instanceof Error && /Markdown|markdown/i.test(err.message)))
