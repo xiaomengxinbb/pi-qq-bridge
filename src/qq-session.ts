@@ -8,7 +8,7 @@
  * - 会话管理（M2）：/new /sessions /resume /name /compact /model /thinking /stop
  */
 import { realpathSync } from "node:fs";
-import { pathToFileURL } from "node:url";
+import { pathToFileURL, fileURLToPath } from "node:url";
 import { Type } from "typebox";
 import type { QQOutboundDeliveryContext } from "./outbound-media.ts";
 
@@ -17,6 +17,10 @@ const SDK_MARKER = "@earendil-works" + "/" + "pi-coding-agent";
 
 /** 从运行进程定位已安装的 pi SDK 入口（dist/index.js） */
 export function resolveSdkEntry(): string {
+	// 1. 环境变量显式覆盖（独立进程/测试脚本场景）
+	const envEntry = process.env.PI_QQBRIDGE_SDK_ENTRY;
+	if (envEntry) return envEntry;
+	// 2. 从进程入口（pi 主进程 / 测试）定位
 	const candidates: string[] = [];
 	if (process.argv[1]) {
 		try {
@@ -32,7 +36,17 @@ export function resolveSdkEntry(): string {
 		if (index >= 0)
 			return `${normalized.slice(0, index + SDK_MARKER.length)}/dist/index.js`;
 	}
-	throw new Error("cannot locate pi SDK from process.argv[1]");
+	// 3. 兜底：import.meta.resolve 解析包（独立进程/脚本场景，解析到 node_modules）
+	try {
+		const resolved = import.meta.resolve(SDK_MARKER);
+		const url = new URL(resolved);
+		if (url.protocol === "file:") return fileURLToPath(url);
+	} catch {
+		// 忽略；继续抛错
+	}
+	throw new Error(
+		"cannot locate pi SDK from process.argv[1]（可设置环境变量 PI_QQBRIDGE_SDK_ENTRY 指定）",
+	);
 }
 
 /** 本扩展路径特征（排除自身防递归时匹配） */

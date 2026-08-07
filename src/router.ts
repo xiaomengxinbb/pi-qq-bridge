@@ -27,7 +27,7 @@ import {
 	formatAttachmentFailures,
 	hasUsableAgentInput,
 } from "./attachment-pipeline.ts";
-import { type WorkspaceRegistry } from "./workspace-registry.ts";
+import type { WorkspaceRegistry } from "./workspace-registry.ts";
 import { QQOutboundDeliveryContext } from "./outbound-media.ts";
 import { formatQQReply } from "./reply-formatter.ts";
 import type { QQInboundMessage, QQReplyTarget } from "./types.ts";
@@ -1017,6 +1017,7 @@ export class QQRouter {
 					}
 				}
 				this.recordOutbound(msg, chunk, seq);
+				this.emit({ kind: "reply", messageId: msg.id, msgSeq: seq, content: chunk });
 			} catch (err) {
 				// 回复失败不抛出（避免队列卡死）；命令场景由调用方处理
 				if (!(err instanceof Error && /Markdown|markdown/i.test(err.message)))
