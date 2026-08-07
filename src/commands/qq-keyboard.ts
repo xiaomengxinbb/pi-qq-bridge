@@ -4,7 +4,7 @@
  * 关键约束：v2 openid 不能用作 Keyboard 的 specify_user_ids（官方客户端会拒绝点击），
  * 因此按钮一律 permission.type=2（全员可点），真实权限仍由服务端 allowlist/admin 校验。
  */
-import type { QQInboundMessage } from "./types.ts";
+import type { QQInboundMessage } from "../core/types.ts";
 
 export interface QQCommandButton {
 	label: string;

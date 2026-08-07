@@ -16,7 +16,7 @@ import { basename, extname, join } from "node:path";
 import { request as httpsRequest } from "node:https";
 import { pipeline } from "node:stream/promises";
 import { randomUUID } from "node:crypto";
-import type { QQAttachmentKind } from "./types.ts";
+import type { QQAttachmentKind } from "../core/types.ts";
 
 const MAX_REDIRECTS = 5;
 const MAX_RETRIES = 2;

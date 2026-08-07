@@ -3,14 +3,14 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { normalizeCommandText, parseQQCommand } from "../src/command-parser.ts";
+import { normalizeCommandText, parseQQCommand } from "../src/commands/command-parser.ts";
 import {
 	QQ_COMMAND_NAMES,
 	QQ_REMOTE_BLOCKED_COMMANDS,
 	authorizeQQCommand,
 	isMutatingQQCommand,
 	CommandStateMachine,
-} from "../src/command-controller.ts";
+} from "../src/commands/command-controller.ts";
 import { makeTestConfig, msg } from "./helpers.ts";
 
 // ── parser ────────────────────────────────────────────────────────

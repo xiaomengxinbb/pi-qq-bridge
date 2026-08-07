@@ -5,8 +5,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { QQRouter } from "../src/router.ts";
-import { QQAccessRequestStore } from "../src/access-requests.ts";
-import { CommandStateMachine } from "../src/command-controller.ts";
+import { QQAccessRequestStore } from "../src/commands/access-requests.ts";
+import { CommandStateMachine } from "../src/commands/command-controller.ts";
 import {
 	makeTestConfig,
 	makeApi,

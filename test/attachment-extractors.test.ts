@@ -11,7 +11,7 @@ import {
 	extractPdf,
 	makeMinimalPdf,
 	AttachmentExtractError,
-} from "../src/attachment-extractors.ts";
+} from "../src/media/attachment-extractors.ts";
 
 function tmpFile(name: string, bytes: Uint8Array | Buffer): string {
 	const dir = mkdtempSync(join(tmpdir(), "pi-qq-bridge-extract-"));

@@ -7,10 +7,10 @@ import {
 	buildModelPage,
 	normalizeModelPageSize,
 	MAX_MODEL_PAGE_SIZE,
-} from "../src/model-pages.ts";
-import { buildCommandKeyboard } from "../src/qq-keyboard.ts";
+} from "../src/commands/model-pages.ts";
+import { buildCommandKeyboard } from "../src/commands/qq-keyboard.ts";
 import { msg } from "./helpers.ts";
-import type { QQModelInfo } from "../src/model-pages.ts";
+import type { QQModelInfo } from "../src/commands/model-pages.ts";
 
 function models(n: number): QQModelInfo[] {
 	return Array.from({ length: n }, (_, i) => ({

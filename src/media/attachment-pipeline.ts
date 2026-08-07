@@ -20,8 +20,8 @@ import {
 	extractTxt,
 } from "./attachment-extractors.ts";
 import { SttError, transcribeOpenAI } from "./stt.ts";
-import { resolveSdkEntry } from "./qq-session.ts";
-import type { PiQQBridgeConfig } from "./config.ts";
+import { resolveSdkEntry } from "../session/qq-session.ts";
+import type { PiQQBridgeConfig } from "../core/config.ts";
 import type {
 	PreparedAttachment,
 	PreparedQQMessage,
@@ -29,7 +29,7 @@ import type {
 	QQAttachmentKind,
 	QQImageContent,
 	QQInboundMessage,
-} from "./types.ts";
+} from "../core/types.ts";
 
 /** 下载器结构接口（测试注入 fake） */
 export interface AttachmentDownloaderLike {

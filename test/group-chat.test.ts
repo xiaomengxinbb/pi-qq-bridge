@@ -11,12 +11,12 @@ import {
 	groupAtMessageEvent,
 	c2cMessageEvent,
 } from "./mock-qq-server.ts";
-import { QQAuth } from "../src/qq-auth.ts";
-import { QQGateway } from "../src/qq-gateway.ts";
-import { QQApi } from "../src/qq-api.ts";
+import { QQAuth } from "../src/gateway/qq-auth.ts";
+import { QQGateway } from "../src/gateway/qq-gateway.ts";
+import { QQApi } from "../src/gateway/qq-api.ts";
 import { QQRouter } from "../src/router.ts";
 import { makeTestConfig, FakeRegistry } from "./helpers.ts";
-import type { QQInboundMessage } from "../src/types.ts";
+import type { QQInboundMessage } from "../src/core/types.ts";
 
 test("网关：GROUP_AT_MESSAGE_CREATE → QQInboundMessage(type=group, groupOpenId)", async () => {
 	const mock = await startMockQQServer();

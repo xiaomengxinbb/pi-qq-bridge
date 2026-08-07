@@ -5,9 +5,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { startMockQQServer, c2cMessageEvent } from "./mock-qq-server.ts";
-import { QQAuth } from "../src/qq-auth.ts";
-import { QQGateway } from "../src/qq-gateway.ts";
-import type { QQInboundMessage } from "../src/types.ts";
+import { QQAuth } from "../src/gateway/qq-auth.ts";
+import { QQGateway } from "../src/gateway/qq-gateway.ts";
+import type { QQInboundMessage } from "../src/core/types.ts";
 
 test("完整连接：token → gateway → Identify → READY → connected", async () => {
 	const mock = await startMockQQServer();

@@ -3,8 +3,8 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { MessageDedupe } from "../src/message-dedupe.ts";
-import { ReplyBudget } from "../src/reply-budget.ts";
+import { MessageDedupe } from "../src/session/message-dedupe.ts";
+import { ReplyBudget } from "../src/session/reply-budget.ts";
 
 test("MessageDedupe：首次放行，重复拒绝", () => {
 	const d = new MessageDedupe(60_000, 10);

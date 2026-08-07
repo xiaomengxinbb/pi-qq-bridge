@@ -10,8 +10,8 @@ import {
 	type ServerResponse,
 	type Server,
 } from "node:http";
-import { QQApi, QQApiError } from "../src/qq-api.ts";
-import { QQAuth } from "../src/qq-auth.ts";
+import { QQApi, QQApiError } from "../src/gateway/qq-api.ts";
+import { QQAuth } from "../src/gateway/qq-auth.ts";
 
 interface CapturedRequest {
 	path: string;

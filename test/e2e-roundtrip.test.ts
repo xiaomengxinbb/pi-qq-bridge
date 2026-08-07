@@ -5,13 +5,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { startMockQQServer, c2cMessageEvent } from "./mock-qq-server.ts";
-import { QQAuth } from "../src/qq-auth.ts";
-import { QQGateway } from "../src/qq-gateway.ts";
-import { QQApi } from "../src/qq-api.ts";
+import { QQAuth } from "../src/gateway/qq-auth.ts";
+import { QQGateway } from "../src/gateway/qq-gateway.ts";
+import { QQApi } from "../src/gateway/qq-api.ts";
 import { QQRouter, type ConversationRegistryLike } from "../src/router.ts";
-import { QQAccessRequestStore } from "../src/access-requests.ts";
+import { QQAccessRequestStore } from "../src/commands/access-requests.ts";
 import { makeTestConfig, FakeRegistry } from "./helpers.ts";
-import type { QQInboundMessage } from "../src/types.ts";
+import type { QQInboundMessage } from "../src/core/types.ts";
 
 test("端到端：C2C 消息 → 隔离会话 → 被动回复（msg_id 引用 + msg_seq=1）", async () => {
 	const mock = await startMockQQServer();

@@ -11,9 +11,9 @@ import { constants } from "node:fs";
 import { open, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, isAbsolute, relative, resolve, sep } from "node:path";
-import { type QQApi, QQApiError } from "./qq-api.ts";
-import type { PiQQBridgeConfig } from "./config.ts";
-import type { QQInboundMessage, QQReplyTarget } from "./types.ts";
+import { type QQApi, QQApiError } from "../gateway/qq-api.ts";
+import type { PiQQBridgeConfig } from "../core/config.ts";
+import type { QQInboundMessage, QQReplyTarget } from "../core/types.ts";
 
 export type QQOutboundKind = "auto" | "image" | "file";
 

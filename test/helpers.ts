@@ -2,16 +2,16 @@
  * 测试共享工具：完整配置 + 完整功能 fake 会话/注册表/API
  * （QQSessionLike 接口较大，fake 必须实现全部方法）
  */
-import { DEFAULT_CONFIG, type PiQQBridgeConfig } from "../src/config.ts";
-import type { QQApi } from "../src/qq-api.ts";
-import type { QQInboundMessage, QQReplyTarget } from "../src/types.ts";
+import { DEFAULT_CONFIG, type PiQQBridgeConfig } from "../src/core/config.ts";
+import type { QQApi } from "../src/gateway/qq-api.ts";
+import type { QQInboundMessage, QQReplyTarget } from "../src/core/types.ts";
 import type {
 	QQRunResult,
 	QQModelInfo,
 	QQSessionInfo,
-} from "../src/qq-session.ts";
+} from "../src/session/qq-session.ts";
 import type { ConversationRegistryLike } from "../src/router.ts";
-import type { QQSessionLike } from "../src/qq-session.ts";
+import type { QQSessionLike } from "../src/session/qq-session.ts";
 
 /** 从 DEFAULT_CONFIG 构造完整配置（默认无管理员、单授权用户可选） */
 export function makeTestConfig(

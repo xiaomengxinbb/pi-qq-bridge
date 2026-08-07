@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createServer, type Server } from "node:http";
-import { QQAuth, validateTokenUrl } from "../src/qq-auth.ts";
+import { QQAuth, validateTokenUrl } from "../src/gateway/qq-auth.ts";
 
 async function withTokenServer(
 	handler: (

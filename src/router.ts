@@ -4,34 +4,34 @@
  * handleInbound → 去重 → 白名单（未授权走访问申请）→ / 命令控制器 | prompt 队列
  * prompt：FIFO 串行 → 隔离会话 run → progress ack（可选）→ 被动回复（showProcess 摘要）
  */
-import { MessageDedupe } from "./message-dedupe.ts";
-import { ReplyBudget } from "./reply-budget.ts";
-import type { QQApi } from "./qq-api.ts";
-import type { QQKeyboard } from "./qq-keyboard.ts";
-import { formatUserFacingAgentError } from "./user-facing.ts";
-import type { PiQQBridgeConfig } from "./config.ts";
+import { MessageDedupe } from "./session/message-dedupe.ts";
+import { ReplyBudget } from "./session/reply-budget.ts";
+import type { QQApi } from "./gateway/qq-api.ts";
+import type { QQKeyboard } from "./commands/qq-keyboard.ts";
+import { formatUserFacingAgentError } from "./core/user-facing.ts";
+import type { PiQQBridgeConfig } from "./core/config.ts";
 import {
 	CommandStateMachine,
 	authorizeQQCommand,
-} from "./command-controller.ts";
-import { parseQQCommand, type ParsedQQCommand } from "./command-parser.ts";
+} from "./commands/command-controller.ts";
+import { parseQQCommand, type ParsedQQCommand } from "./commands/command-parser.ts";
 import {
 	buildModelPage,
 	formatModelPageFallback,
 	type QQModelInfo,
-} from "./model-pages.ts";
-import { buildCommandKeyboard, type QQCommandButton } from "./qq-keyboard.ts";
-import type { QQAccessRequestStore } from "./access-requests.ts";
+} from "./commands/model-pages.ts";
+import { buildCommandKeyboard, type QQCommandButton } from "./commands/qq-keyboard.ts";
+import type { QQAccessRequestStore } from "./commands/access-requests.ts";
 import {
 	type AttachmentPipeline,
 	formatAttachmentFailures,
 	hasUsableAgentInput,
-} from "./attachment-pipeline.ts";
-import type { WorkspaceRegistry } from "./workspace-registry.ts";
-import { QQOutboundDeliveryContext } from "./outbound-media.ts";
+} from "./media/attachment-pipeline.ts";
+import type { WorkspaceRegistry } from "./session/workspace-registry.ts";
+import { QQOutboundDeliveryContext } from "./media/outbound-media.ts";
 import { formatQQReply } from "./reply-formatter.ts";
-import type { QQInboundMessage, QQReplyTarget } from "./types.ts";
-import type { QQSessionInfo, QQSessionLike } from "./qq-session.ts";
+import type { QQInboundMessage, QQReplyTarget } from "./core/types.ts";
+import type { QQSessionInfo, QQSessionLike } from "./session/qq-session.ts";
 
 /** 注册表结构接口（ConversationRegistry 结构兼容） */
 export interface ConversationRegistryLike {
@@ -797,7 +797,7 @@ export class QQRouter {
 	): Promise<void> {
 		try {
 			let prompt = msg.text;
-			let images: import("./types.ts").QQImageContent[] = [];
+			let images: import("./core/types.ts").QQImageContent[] = [];
 			if (msg.attachments.length > 0 && this.attachmentPipeline) {
 				const controller = new AbortController();
 				const prepared = await this.attachmentPipeline.prepare(
@@ -868,7 +868,7 @@ export class QQRouter {
 		let preparedCleanup: (() => Promise<void>) | undefined;
 		try {
 			let prompt = msg.text;
-			let images: import("./types.ts").QQImageContent[] = [];
+			let images: import("./core/types.ts").QQImageContent[] = [];
 			if (msg.attachments.length > 0 && this.attachmentPipeline) {
 				const prepared = await this.attachmentPipeline.prepare(
 					msg,

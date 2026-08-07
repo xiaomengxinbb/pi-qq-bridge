@@ -10,7 +10,7 @@
 import { realpathSync } from "node:fs";
 import { pathToFileURL, fileURLToPath } from "node:url";
 import { Type } from "typebox";
-import type { QQOutboundDeliveryContext } from "./outbound-media.ts";
+import type { QQOutboundDeliveryContext } from "../media/outbound-media.ts";
 
 // 拆分拼接，避免字面量出现在 bundle 路径扫描目标里（@xsqm 同款手法）
 const SDK_MARKER = "@earendil-works" + "/" + "pi-coding-agent";
@@ -118,7 +118,7 @@ export interface QQSessionLike {
 	run(
 		prompt: string,
 		options?: {
-			images?: import("./types.ts").QQImageContent[];
+			images?: import("../core/types.ts").QQImageContent[];
 			observer?: QQAgentRunObserver;
 		},
 	): Promise<QQRunResult>;
@@ -140,7 +140,7 @@ export interface QQSessionLike {
 	/** M7：运行中插嘴（当前 assistant 回合结束后注入） */
 	steer?(
 		prompt: string,
-		options?: { images?: import("./types.ts").QQImageContent[] },
+		options?: { images?: import("../core/types.ts").QQImageContent[] },
 	): Promise<void>;
 	/** M7：清除未投递的 steering/followUp 队列 */
 	clearPendingMessages?(): void;
@@ -358,7 +358,7 @@ export class QQAgentSession {
 					throw new Error(
 						"No active QQ delivery context (delivery_context_closed)",
 					);
-				const { formatBytes } = await import("./outbound-media.ts");
+				const { formatBytes } = await import("../media/outbound-media.ts");
 				const record = await delivery.sendLocalFile(params.path, "auto");
 				return {
 					content: [
@@ -382,7 +382,7 @@ export class QQAgentSession {
 	async run(
 		prompt: string,
 		options: {
-			images?: import("./types.ts").QQImageContent[];
+			images?: import("../core/types.ts").QQImageContent[];
 			observer?: QQAgentRunObserver;
 		} = {},
 	): Promise<QQRunResult> {
@@ -461,7 +461,7 @@ export class QQAgentSession {
 		} finally {
 			unsubscribe();
 		}
-		const { extractFinalAssistantText } = await import("./user-facing.ts");
+		const { extractFinalAssistantText } = await import("../core/user-facing.ts");
 		return { text: extractFinalAssistantText(messages), tools };
 	}
 

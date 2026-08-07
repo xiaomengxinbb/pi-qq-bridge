@@ -3,7 +3,7 @@
  * 密钥只从环境变量读取（media.voice.stt.apiKeyEnv），绝不写配置
  */
 import { readFile } from "node:fs/promises";
-import type { QQMediaSttConfig } from "./types.ts";
+import type { QQMediaSttConfig } from "../core/types.ts";
 
 export class SttError extends Error {
 	readonly code: string;

@@ -5,7 +5,7 @@
  * - 错误分类：QQApiError{status, code, requestAccepted}
  */
 import type { QQAuth } from "./qq-auth.ts";
-import type { QQReplyTarget } from "./types.ts";
+import type { QQReplyTarget } from "../core/types.ts";
 
 const PROD_BASE = "https://api.sgroup.qq.com";
 const SANDBOX_BASE = "https://sandbox.api.sgroup.qq.com";

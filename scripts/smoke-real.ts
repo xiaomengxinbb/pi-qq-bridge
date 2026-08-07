@@ -10,16 +10,16 @@
  * 注意：本脚本为一次性验证——首个真实消息的 user_openid 会被自动加入 allowUsers
  * （打印提示；生产使用请走 /qqbot-approve 审批流）。
  */
-import { expandHome, loadConfig } from "../src/config.ts";
-import { QQAuth } from "../src/qq-auth.ts";
-import { QQGateway } from "../src/qq-gateway.ts";
-import { QQApi } from "../src/qq-api.ts";
-import { ConversationRegistry } from "../src/conversation-registry.ts";
+import { expandHome, loadConfig } from "../src/core/config.ts";
+import { QQAuth } from "../src/gateway/qq-auth.ts";
+import { QQGateway } from "../src/gateway/qq-gateway.ts";
+import { QQApi } from "../src/gateway/qq-api.ts";
+import { ConversationRegistry } from "../src/session/conversation-registry.ts";
 import { QQRouter } from "../src/router.ts";
-import { QQAccessRequestStore } from "../src/access-requests.ts";
-import { CommandStateMachine } from "../src/command-controller.ts";
-import { AttachmentPipeline } from "../src/attachment-pipeline.ts";
-import { WorkspaceRegistry } from "../src/workspace-registry.ts";
+import { QQAccessRequestStore } from "../src/commands/access-requests.ts";
+import { CommandStateMachine } from "../src/commands/command-controller.ts";
+import { AttachmentPipeline } from "../src/media/attachment-pipeline.ts";
+import { WorkspaceRegistry } from "../src/session/workspace-registry.ts";
 
 const RUN_SECONDS = Number(process.env.SMOKE_SECONDS ?? 180);
 

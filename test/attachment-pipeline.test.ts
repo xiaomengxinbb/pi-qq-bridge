@@ -11,10 +11,10 @@ import { join } from "node:path";
 import {
 	AttachmentPipeline,
 	type AttachmentDownloaderLike,
-} from "../src/attachment-pipeline.ts";
+} from "../src/media/attachment-pipeline.ts";
 import { makeTestConfig } from "./helpers.ts";
-import type { QQAttachment, QQInboundMessage } from "../src/types.ts";
-import type { DownloadedAttachment } from "../src/attachment-downloader.ts";
+import type { QQAttachment, QQInboundMessage } from "../src/core/types.ts";
+import type { DownloadedAttachment } from "../src/media/attachment-downloader.ts";
 
 /** fake downloader：把 URL 映射到本地文件（或按需返回 sniff 结果） */
 function fakeDownloader(
@@ -326,7 +326,7 @@ test("管线：所有附件失败且无文本 → hasUsableAgentInput=false", as
 			new AbortController().signal,
 		);
 		const { hasUsableAgentInput } = await import(
-			"../src/attachment-pipeline.ts"
+			"../src/media/attachment-pipeline.ts"
 		);
 		assert.equal(
 			hasUsableAgentInput(message([attachment()]), prepared.resources),

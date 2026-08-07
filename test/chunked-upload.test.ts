@@ -4,8 +4,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { startMockQQServer } from "./mock-qq-server.ts";
-import { QQAuth } from "../src/qq-auth.ts";
-import { QQApi } from "../src/qq-api.ts";
+import { QQAuth } from "../src/gateway/qq-auth.ts";
+import { QQApi } from "../src/gateway/qq-api.ts";
 
 const target = {
 	type: "private" as const,

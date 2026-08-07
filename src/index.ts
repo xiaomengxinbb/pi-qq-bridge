@@ -23,20 +23,20 @@ import {
 	ConfigError,
 	saveConfig,
 	type PiQQBridgeConfig,
-} from "./config.ts";
-import { QQAuth } from "./qq-auth.ts";
-import { QQGateway } from "./qq-gateway.ts";
-import { QQApi } from "./qq-api.ts";
-import { ConversationRegistry } from "./conversation-registry.ts";
+} from "./core/config.ts";
+import { QQAuth } from "./gateway/qq-auth.ts";
+import { QQGateway } from "./gateway/qq-gateway.ts";
+import { QQApi } from "./gateway/qq-api.ts";
+import { ConversationRegistry } from "./session/conversation-registry.ts";
 import { QQRouter } from "./router.ts";
 import {
 	QQAccessRequestStore,
 	normalizeAccessRole,
-} from "./access-requests.ts";
-import { AttachmentPipeline } from "./attachment-pipeline.ts";
-import { WorkspaceRegistry } from "./workspace-registry.ts";
+} from "./commands/access-requests.ts";
+import { AttachmentPipeline } from "./media/attachment-pipeline.ts";
+import { WorkspaceRegistry } from "./session/workspace-registry.ts";
 import { TerminalView } from "./terminal-view.ts";
-import { CommandStateMachine } from "./command-controller.ts";
+import { CommandStateMachine } from "./commands/command-controller.ts";
 import {
 	acquireInstanceLock,
 	ensureLockDir,
@@ -53,11 +53,20 @@ const HOST_SCHEMA = 1;
 function createBuildId(): string {
 	const directory = dirname(fileURLToPath(import.meta.url));
 	const hash = createHash("sha256");
-	const sourceFiles = readdirSync(directory)
-		.filter(
-			(filename) => filename.endsWith(".ts") && !filename.endsWith(".test.ts"),
-		)
-		.sort();
+	// 递归扫描 src（分层后子目录也要纳入 build 指纹）
+	const sourceFiles: string[] = [];
+	const walk = (dir: string): void => {
+		for (const entry of readdirSync(dir, { withFileTypes: true })) {
+			const full = join(dir, entry.name);
+			if (entry.isDirectory()) {
+				walk(full);
+			} else if (entry.name.endsWith(".ts") && !entry.name.endsWith(".test.ts")) {
+				sourceFiles.push(full.slice(directory.length + 1).replaceAll("\\", "/"));
+			}
+		}
+	};
+	walk(directory);
+	sourceFiles.sort();
 	for (const filename of sourceFiles) {
 		hash.update(filename);
 		hash.update(readFileSync(join(directory, filename)));

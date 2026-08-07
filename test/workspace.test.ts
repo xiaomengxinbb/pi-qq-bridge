@@ -10,8 +10,8 @@ import {
 	WorkspaceRegistry,
 	WorkspaceError,
 	isValidWorkspaceName,
-} from "../src/workspace-registry.ts";
-import { ConversationRegistry } from "../src/conversation-registry.ts";
+} from "../src/session/workspace-registry.ts";
+import { ConversationRegistry } from "../src/session/conversation-registry.ts";
 import { QQRouter } from "../src/router.ts";
 import {
 	makeTestConfig,
@@ -100,7 +100,7 @@ test("registry：切换 workspace 后旧会话 dispose、新会话用新 cwd", a
 		const initCwds: string[] = [];
 		let disposed = 0;
 		const factory = {
-			create: (): import("../src/qq-session.ts").QQSessionLike => {
+			create: (): import("../src/session/qq-session.ts").QQSessionLike => {
 				const session = new FakeSession({});
 				// 包装 init 记录 cwd、dispose 计数（dispose 需保存原引用防递归）
 				const originalDispose = session.dispose.bind(session);

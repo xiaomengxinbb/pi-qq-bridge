@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import {
 	QQAccessRequestStore,
 	normalizeAccessRole,
-} from "../src/access-requests.ts";
+} from "../src/commands/access-requests.ts";
 import { msg } from "./helpers.ts";
 
 const T0 = 1_000_000;

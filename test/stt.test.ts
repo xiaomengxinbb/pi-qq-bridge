@@ -7,7 +7,7 @@ import { createServer, type Server } from "node:http";
 import { writeFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { transcribeOpenAI, SttError } from "../src/stt.ts";
+import { transcribeOpenAI, SttError } from "../src/media/stt.ts";
 
 async function withSttServer(
 	handler: (

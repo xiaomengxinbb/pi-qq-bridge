@@ -12,7 +12,7 @@ import {
 	classifyAttachment,
 	safeOriginalFilename,
 	AttachmentDownloadError,
-} from "../src/attachment-downloader.ts";
+} from "../src/media/attachment-downloader.ts";
 
 // ── URL 校验 ─────────────────────────────────────────────────────
 

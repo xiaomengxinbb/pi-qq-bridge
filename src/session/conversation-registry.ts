@@ -10,8 +10,8 @@ import { createHash } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { QQAgentSession, type QQSessionLike } from "./qq-session.ts";
-import type { PiQQBridgeConfig } from "./config.ts";
-import type { QQInboundMessage } from "./types.ts";
+import type { PiQQBridgeConfig } from "../core/config.ts";
+import type { QQInboundMessage } from "../core/types.ts";
 
 export function conversationKey(msg: QQInboundMessage): string {
 	return msg.type === "private"

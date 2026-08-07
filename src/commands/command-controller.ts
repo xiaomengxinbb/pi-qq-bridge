@@ -5,8 +5,8 @@
  *   selection    — /model 候选选择、/sessions 候选选择、/resume 消歧（selectionTtlMs）
  *   confirmation — /new（提示保留旧会话）、/workspace 切换、admin 二次确认（confirmationTtlMs）
  */
-import type { PiQQBridgeConfig } from "./config.ts";
-import type { QQInboundMessage } from "./types.ts";
+import type { PiQQBridgeConfig } from "../core/config.ts";
+import type { QQInboundMessage } from "../core/types.ts";
 import type { ParsedQQCommand } from "./command-parser.ts";
 
 export const QQ_COMMAND_NAMES = new Set([

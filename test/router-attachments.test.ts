@@ -11,9 +11,9 @@ import {
 	msg,
 	type SentMessage,
 } from "./helpers.ts";
-import type { QQInboundMessage } from "../src/types.ts";
-import type { PreparedQQMessage } from "../src/types.ts";
-import type { AttachmentPipeline } from "../src/attachment-pipeline.ts";
+import type { QQInboundMessage } from "../src/core/types.ts";
+import type { PreparedQQMessage } from "../src/core/types.ts";
+import type { AttachmentPipeline } from "../src/media/attachment-pipeline.ts";
 
 function fakePipeline(
 	overrides: Partial<PreparedQQMessage> = {},

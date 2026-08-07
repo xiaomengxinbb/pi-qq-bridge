@@ -14,7 +14,7 @@ import type {
 	QQGatewayStateListener,
 	QQInboundListener,
 	QQInboundMessage,
-} from "./types.ts";
+} from "../core/types.ts";
 import type { QQAuth } from "./qq-auth.ts";
 
 export const QQ_INTENTS = 1 << 25; // GROUP_AND_C2C_EVENT

@@ -18,7 +18,7 @@ import {
 	CONFIG_SCHEMA_VERSION,
 	ConfigError,
 	expandHome,
-} from "../src/config.ts";
+} from "../src/core/config.ts";
 
 function writeTempConfig(partial: unknown): string {
 	const dir = mkdtempSync(join(tmpdir(), "pi-qq-bridge-test-"));

@@ -18,10 +18,10 @@ import {
 	resolveAllowedLocalFile,
 	normalizeInputPath,
 	formatBytes,
-} from "../src/outbound-media.ts";
+} from "../src/media/outbound-media.ts";
 import { makeTestConfig, msg } from "./helpers.ts";
-import type { QQApi } from "../src/qq-api.ts";
-import type { QQInboundMessage } from "../src/types.ts";
+import type { QQApi } from "../src/gateway/qq-api.ts";
+import type { QQInboundMessage } from "../src/core/types.ts";
 
 function tempDir(): string {
 	// 用 cwd 而非 tmpdir：OS tmp 是默认 allowedRoot，测试"拒绝"场景必须放在 tmp 外

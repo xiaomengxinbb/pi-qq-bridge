@@ -7,7 +7,7 @@
  * - 批准落地（原子持久化 + 热生效）由 index.ts 本地命令层负责
  */
 import { randomBytes } from "node:crypto";
-import type { QQInboundMessage } from "./types.ts";
+import type { QQInboundMessage } from "../core/types.ts";
 
 export type QQAccessRole = "user" | "admin";
 
