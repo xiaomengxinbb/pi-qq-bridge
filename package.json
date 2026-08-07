@@ -14,7 +14,10 @@
     "coding-agent"
   ],
   "files": [
-    "src"
+    "src",
+    "CHANGELOG.md",
+    "README.md",
+    "LICENSE"
   ],
   "pi": {
     "extensions": [
@@ -24,6 +27,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "node --test \"test/*.test.ts\"",
+    "prepack": "npm test",
     "spike": "node --experimental-strip-types scripts/spike-sdk.ts"
   },
   "peerDependencies": {
@@ -38,5 +42,16 @@
   "dependencies": {
     "typebox": "^1.1.38",
     "unpdf": "^1.8.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pi-qq-bridge/pi-qq-bridge.git"
+  },
+  "homepage": "https://github.com/pi-qq-bridge/pi-qq-bridge#readme",
+  "bugs": {
+    "url": "https://github.com/pi-qq-bridge/pi-qq-bridge/issues"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

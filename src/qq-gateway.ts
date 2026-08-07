@@ -196,10 +196,14 @@ export class QQGateway {
 				const data =
 					dataType === "string"
 						? event.data
-						: dataType === "object" && event.data !== null && "text" in event.data
+						: dataType === "object" &&
+								event.data !== null &&
+								"text" in event.data
 							? String((event.data as { text: unknown }).text)
 							: Buffer.from(event.data as ArrayBuffer).toString("utf8");
-				this.debugLog?.(`[gw] 收到帧 type=${dataType} len=${data.length} 前120: ${data.slice(0, 120)}`);
+				this.debugLog?.(
+					`[gw] 收到帧 type=${dataType} len=${data.length} 前120: ${data.slice(0, 120)}`,
+				);
 				let frame: { op: number; s?: number; t?: string; d?: unknown };
 				try {
 					frame = JSON.parse(data) as {
@@ -262,7 +266,9 @@ export class QQGateway {
 								properties: { os: process.platform, language: "node" },
 							},
 						};
-				this.debugLog?.(`[gw] Hello 收到，发送 ${this.sessionId ? "Resume" : "Identify"}（sessionId=${this.sessionId ?? "无"}）`);
+				this.debugLog?.(
+					`[gw] Hello 收到，发送 ${this.sessionId ? "Resume" : "Identify"}（sessionId=${this.sessionId ?? "无"}）`,
+				);
 				this.ws?.send(JSON.stringify(payload));
 				break;
 			}
@@ -426,8 +432,8 @@ export class QQGateway {
 		this.reconnectTimer = setTimeout(() => {
 			this.reconnectTimer = undefined;
 			void this.connect().catch((err) => {
-				// connect 失败会走到 onclose → scheduleReconnect；这里兜底
-				this.setState("error", `重连失败：${(err as Error).message}`);
+				// connect 失败（含 /gateway 端点 5xx 等平台临时故障）→ 继续退避重试，直到次数上限
+				this.scheduleReconnect(`连接失败：${(err as Error).message}`);
 			});
 		}, delay);
 		this.reconnectTimer.unref?.();
