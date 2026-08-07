@@ -99,7 +99,13 @@ export interface QQSessionLike {
 	isReady(): boolean;
 	isStreaming(): boolean;
 	dispose(): Promise<void>;
-	run(prompt: string, options?: { images?: import("./types.ts").QQImageContent[]; observer?: QQAgentRunObserver }): Promise<QQRunResult>;
+	run(
+		prompt: string,
+		options?: {
+			images?: import("./types.ts").QQImageContent[];
+			observer?: QQAgentRunObserver;
+		},
+	): Promise<QQRunResult>;
 	currentModel(): QQModelInfo | undefined;
 	availableModels(): Promise<QQModelInfo[]>;
 	setModel(provider: string, modelId: string): Promise<QQModelInfo>;
@@ -116,7 +122,10 @@ export interface QQSessionLike {
 	abort(): Promise<void>;
 	bindOutboundDelivery?(context?: unknown): void;
 	/** M7：运行中插嘴（当前 assistant 回合结束后注入） */
-	steer?(prompt: string, options?: { images?: import("./types.ts").QQImageContent[] }): Promise<void>;
+	steer?(
+		prompt: string,
+		options?: { images?: import("./types.ts").QQImageContent[] },
+	): Promise<void>;
 	/** M7：清除未投递的 steering/followUp 队列 */
 	clearPendingMessages?(): void;
 }
@@ -323,12 +332,16 @@ export class QQAgentSession {
 				"Send one real local computer file to the QQ conversation that requested the current task. Use this when the QQ user explicitly asks to send/upload/transfer a local image or file. A local path, Markdown image, or URL in the final answer does not send the file. The target QQ user and reply metadata are securely bound by the plugin; provide only the local path.",
 			parameters: Type.Object({
 				path: Type.String({
-					description: "Local file path returned by a tool or explicitly provided by the user",
+					description:
+						"Local file path returned by a tool or explicitly provided by the user",
 				}),
 			}),
 			async execute(_toolCallId: string, params: { path: string }) {
 				const delivery = qqSession.outboundDelivery;
-				if (!delivery) throw new Error("No active QQ delivery context (delivery_context_closed)");
+				if (!delivery)
+					throw new Error(
+						"No active QQ delivery context (delivery_context_closed)",
+					);
 				const { formatBytes } = await import("./outbound-media.ts");
 				const record = await delivery.sendLocalFile(params.path, "auto");
 				return {
@@ -352,7 +365,10 @@ export class QQAgentSession {
 	/** 运行一次 prompt 到完成（调用方负责串行化）。返回最终文本与工具记录。 */
 	async run(
 		prompt: string,
-		options: { images?: import("./types.ts").QQImageContent[]; observer?: QQAgentRunObserver } = {},
+		options: {
+			images?: import("./types.ts").QQImageContent[];
+			observer?: QQAgentRunObserver;
+		} = {},
 	): Promise<QQRunResult> {
 		const { images, observer } = options;
 		const session = (this.runtime as { session: unknown }).session;
@@ -422,7 +438,10 @@ export class QQAgentSession {
 						options: Record<string, unknown>,
 					): Promise<void>;
 				}
-			).prompt(prompt, { source: "extension", ...(images && images.length ? { images } : {}) });
+			).prompt(prompt, {
+				source: "extension",
+				...(images && images.length ? { images } : {}),
+			});
 		} finally {
 			unsubscribe();
 		}
