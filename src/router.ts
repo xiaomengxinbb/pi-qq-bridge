@@ -69,6 +69,8 @@ export interface QQRouterOptions {
 	stateMachine?: CommandStateMachine;
 	/** 事件观察者（TUI/测试） */
 	onEvent?: (event: QQRouterEvent) => void;
+	/** 调试日志（文件输出；诊断用） */
+	debugLog?: (message: string) => void;
 	/** /status 的网关状态文本提供者（index.ts 接线） */
 	statusProvider?: () => string;
 }
@@ -96,6 +98,7 @@ export class QQRouter {
 	private readonly accessRequests?: QQAccessRequestStore;
 	private readonly onEvent?: (event: QQRouterEvent) => void;
 	private readonly statusProvider?: () => string;
+	private readonly debugLog?: (message: string) => void;
 	private readonly attachmentPipeline?: AttachmentPipeline;
 	private readonly workspaceRegistry?: WorkspaceRegistry;
 	private readonly recentInbound: LastEntry[] = [];
@@ -122,6 +125,7 @@ export class QQRouter {
 		this.accessRequests = options.accessRequests;
 		this.onEvent = options.onEvent;
 		this.statusProvider = options.statusProvider;
+		this.debugLog = options.debugLog;
 		this.attachmentPipeline = options.attachmentPipeline;
 		this.workspaceRegistry = options.workspaceRegistry;
 	}
@@ -129,12 +133,18 @@ export class QQRouter {
 	// ── 入站入口 ───────────────────────────────────────────────────
 
 	handleInbound(msg: QQInboundMessage): void {
-		if (!this.dedupe.admit(msg.id)) return; // 平台重复推送
+		this.debugLog?.(`[router] 入站 id=${msg.id.slice(0, 24)} user=${msg.userOpenId} text=${msg.text.slice(0, 30)}`);
+		if (!this.dedupe.admit(msg.id)) {
+			this.debugLog?.("[router] 去重丢弃");
+			return; // 平台重复推送
+		}
 		this.recordInbound(msg);
 		if (!this.isAuthorized(msg)) {
+			this.debugLog?.("[router] 未授权 → 拒绝/申请流程");
 			this.handleUnauthorized(msg);
 			return;
 		}
+		this.debugLog?.("[router] 已授权");
 		const text = msg.text.trim();
 		if (text.startsWith("/")) {
 			if (msg.attachments.length > 0) {
@@ -157,6 +167,7 @@ export class QQRouter {
 		}
 		if (this.queue.length >= this.maxQueueSize) return; // 满则丢最新
 		this.queue.push(msg);
+		this.debugLog?.(`[router] 入队 queue=${this.queue.length}`);
 		this.emit({
 			kind: "queued",
 			messageId: msg.id,
@@ -952,6 +963,11 @@ export class QQRouter {
 		await this.sendFormatted(msg, content, keyboard, true);
 	}
 
+	/** 发送日志辅助 */
+	private debugSend(tag: string, detail: string): void {
+		this.debugLog?.(`[router] ${tag} ${detail}`);
+	}
+
 	/** 分块 + Markdown 优先（降级纯文本保持 msg_seq 对齐） */
 	private async sendFormatted(
 		msg: QQInboundMessage,
@@ -963,9 +979,11 @@ export class QQRouter {
 		const sharedBudget =
 			budget ?? new ReplyBudget(msg.id, this.replyBudgetLimit);
 		const target = this.targetOf(msg);
+		this.debugSend("sendFormatted", `内容 ${content.length} 字符`);
 		const formatted = formatQQReply(content, this.config.replyFormat);
 		const chunks = formatted.markdown;
 		const plainChunks = formatted.plain;
+		this.debugSend("sendFormatted", `分块 ${chunks.length} 块`);
 		for (let index = 0; index < chunks.length; index++) {
 			if (sharedBudget.isExhausted) break;
 			const seq = sharedBudget.nextSeq();

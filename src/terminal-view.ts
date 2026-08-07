@@ -32,7 +32,7 @@ export class TerminalView {
 	/** 解除订阅（session_shutdown 时调用） */
 	detach(): void {
 		this.attached = false;
-		this.options.setWidget("pi-qq-bridge", []);
+		this.safeSetWidget([]);
 	}
 
 	/** router onEvent 回调 */
@@ -74,7 +74,16 @@ export class TerminalView {
 	}
 
 	private render(): void {
-		this.options.setWidget("pi-qq-bridge", [...this.lines]);
+		this.safeSetWidget([...this.lines]);
+	}
+
+	/** UI 调用容错：ctx 在 reload/会话替换后可能失效，观察者失败绝不影响主流程 */
+	private safeSetWidget(lines: string[]): void {
+		try {
+			this.options.setWidget("pi-qq-bridge", lines);
+		} catch {
+			// reload 后旧 ctx 已 stale（pi 会抛 "extension ctx is stale"）——忽略
+		}
 	}
 }
 

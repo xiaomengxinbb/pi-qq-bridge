@@ -21,6 +21,8 @@ export const QQ_INTENTS = 1 << 25; // GROUP_AND_C2C_EVENT
 
 export interface QQGatewayOptions {
 	sandbox: boolean;
+	/** 调试日志回调（写文件等；诊断连接问题用） */
+	debugLog?: (message: string) => void;
 	/** API 基础域名（测试/代理覆盖） */
 	apiBase?: string;
 	/** 重连最大次数，默认 5 */
@@ -61,9 +63,11 @@ export class QQGateway {
 	private readonly reconnectMaxMs: number;
 
 	private readonly auth: QQAuth;
+	private readonly debugLog?: (message: string) => void;
 
 	constructor(auth: QQAuth, options: QQGatewayOptions) {
 		this.auth = auth;
+		this.debugLog = options.debugLog;
 		this.apiBase =
 			options.apiBase ??
 			(options.sandbox
@@ -128,6 +132,7 @@ export class QQGateway {
 	private setState(state: QQGatewayState, info = ""): void {
 		this.state = state;
 		this.stateInfo = info;
+		this.debugLog?.(`[gw] 状态: ${state}${info ? `（${info}）` : ""}`);
 		for (const listener of this.stateListeners) listener(state, info);
 	}
 
@@ -171,6 +176,9 @@ export class QQGateway {
 			let settled = false;
 			const ws = new WebSocket(url);
 			this.ws = ws;
+			this.debugLog?.(
+				`[gw] openSocket ${url} | WebSocket 实现: ${(WebSocket as unknown as { name?: string }).name ?? "anonymous"} / toString: ${String(WebSocket).slice(0, 80)}`,
+			);
 
 			const fail = (err: Error) => {
 				if (settled) return;
@@ -184,10 +192,14 @@ export class QQGateway {
 			};
 
 			ws.onmessage = (event) => {
+				const dataType = typeof event.data;
 				const data =
-					typeof event.data === "string"
+					dataType === "string"
 						? event.data
-						: Buffer.from(event.data as ArrayBuffer).toString("utf8");
+						: dataType === "object" && event.data !== null && "text" in event.data
+							? String((event.data as { text: unknown }).text)
+							: Buffer.from(event.data as ArrayBuffer).toString("utf8");
+				this.debugLog?.(`[gw] 收到帧 type=${dataType} len=${data.length} 前120: ${data.slice(0, 120)}`);
 				let frame: { op: number; s?: number; t?: string; d?: unknown };
 				try {
 					frame = JSON.parse(data) as {
@@ -250,6 +262,7 @@ export class QQGateway {
 								properties: { os: process.platform, language: "node" },
 							},
 						};
+				this.debugLog?.(`[gw] Hello 收到，发送 ${this.sessionId ? "Resume" : "Identify"}（sessionId=${this.sessionId ?? "无"}）`);
 				this.ws?.send(JSON.stringify(payload));
 				break;
 			}
@@ -262,20 +275,27 @@ export class QQGateway {
 					const d = frame.d as { session_id?: string } | undefined;
 					if (typeof d?.session_id === "string") this.sessionId = d.session_id;
 					this.reconnectAttempts = 0;
+					this.debugLog?.(`[gw] READY session_id=${this.sessionId ?? "?"}`);
 					this.setState("connected", "已连接");
 					onReady();
 				} else if (frame.t === "RESUMED") {
 					this.reconnectAttempts = 0;
+					this.debugLog?.("[gw] RESUMED");
 					this.setState("connected", "已恢复（Resume）");
 					onReady();
 				} else if (frame.t) {
+					this.debugLog?.(`[gw] 事件 ${frame.t}`);
+
 					this.dispatchEvent(frame.t, frame.d);
 				}
 				break;
 			}
 			case 7: {
-				// op7 Reconnect：平台要求立刻重连（读秒后）
-				onFail(new Error("收到平台 Reconnect(op7) 指令"));
+				// op7 Reconnect：平台要求客户端重新连接
+				// 注意：连接已 READY 后 onFail 因 settled 失效，必须显式重连
+				this.debugLog?.("[gw] 收到 op7 Reconnect，主动重连");
+				this.closeSocket();
+				this.scheduleReconnect("平台要求重连(op7)");
 				break;
 			}
 			case 9: {
@@ -372,6 +392,7 @@ export class QQGateway {
 			this.ws.send(JSON.stringify({ op: OP_HEARTBEAT, d: this.lastSeq }));
 			this.heartbeatAckPending = true;
 			this.lastHeartbeatAt = Date.now();
+			this.debugLog?.("[gw] 心跳发送 op1");
 		}, intervalMs);
 		this.heartbeatTimer.unref?.();
 	}

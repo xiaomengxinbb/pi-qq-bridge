@@ -6,7 +6,14 @@
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { createHash } from "node:crypto";
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync, readdirSync, appendFileSync } from "node:fs";
+
+/** 调试日志辅助（避免闭包内 require） */
+function requireNodeFsForLog(): {
+	appendFileSync(path: string, data: string): void;
+} {
+	return { appendFileSync };
+}
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -68,7 +75,7 @@ interface BridgeRuntime {
 	router: QQRouter;
 	workspaceRegistry: WorkspaceRegistry;
 	accessRequests: QQAccessRequestStore;
-	view: TerminalView;
+	viewHolder: { current: TerminalView };
 	lock: InstanceLock | null;
 	startedAt: number;
 	hostSchema: number;
@@ -125,7 +132,21 @@ export default function piQQBridge(pi: ExtensionAPI): void {
 		const agentDir = expandHome("~/.pi/agent");
 		const cwd = ctx.cwd ?? process.cwd();
 		const auth = new QQAuth(cfg.appId, cfg.clientSecret, {});
-		const gateway = new QQGateway(auth, { sandbox: cfg.sandbox });
+		// 调试日志：写到 /tmp（诊断连接问题；cfg.debug 或 sandbox 时开启）
+		const debugLog = cfg.debug
+			? (message: string) => {
+					const { appendFileSync } = requireNodeFsForLog();
+					try {
+						appendFileSync(
+							"/tmp/pi-qq-bridge-gw.log",
+							`${new Date().toISOString()} ${message}\n`,
+						);
+					} catch {
+						// 日志失败不影响功能
+					}
+				}
+			: undefined;
+		const gateway = new QQGateway(auth, { sandbox: cfg.sandbox, debugLog });
 		const api = new QQApi(auth, { sandbox: cfg.sandbox });
 		const workspaceRegistry = new WorkspaceRegistry(cfg.workspaces, cwd);
 		const registry = new ConversationRegistry(cfg, agentDir, cwd, undefined, {
@@ -137,9 +158,13 @@ export default function piQQBridge(pi: ExtensionAPI): void {
 			cfg,
 			`${process.pid}-${Date.now()}`,
 		);
-		const view = new TerminalView({
-			setWidget: (id, lines) => ctx.ui?.setWidget?.(id, lines),
-		});
+		// viewHolder：router 的 onEvent 委托指向 holder.current，
+		// reload 后替换 current 即可让新 ctx 接管（旧 view 自动弃用）
+		const viewHolder: { current: TerminalView } = {
+			current: new TerminalView({
+				setWidget: (id, lines) => ctx.ui?.setWidget?.(id, lines),
+			}),
+		};
 		const router = new QQRouter(cfg, registry, api, {
 			accessRequests,
 			attachmentPipeline,
@@ -149,8 +174,11 @@ export default function piQQBridge(pi: ExtensionAPI): void {
 				const { state, info } = gateway.getState();
 				return `**${state}**${info ? `（${info}）` : ""}`;
 			},
-			onEvent: view.onEvent,
+			onEvent: (event) => viewHolder.current.onEvent(event),
+			debugLog,
 		});
+		gateway.onInbound((msg) => router.handleInbound(msg));
+		auth.onFatal = (reason) => notify(ctx, `QQ token 刷新连续失败：${reason}`);
 		return {
 			auth,
 			gateway,
@@ -159,7 +187,7 @@ export default function piQQBridge(pi: ExtensionAPI): void {
 			router,
 			workspaceRegistry,
 			accessRequests,
-			view,
+			viewHolder,
 			lock: null,
 			startedAt: Date.now(),
 			hostSchema: HOST_SCHEMA,
@@ -189,7 +217,7 @@ export default function piQQBridge(pi: ExtensionAPI): void {
 			const rt = createBridge(cfg, ctx);
 			rt.lock = acquired.lock;
 			setRuntime(rt);
-			rt.view.attach();
+			rt.viewHolder.current.attach();
 			const ok = await rt.gateway.start();
 			if (!ok && rt.lock) {
 				// 启动失败：释放锁，避免占位
@@ -552,8 +580,16 @@ export default function piQQBridge(pi: ExtensionAPI): void {
 
 	pi.on("session_start", async (_event, ctx) => {
 		// 进程级运行时已存在（跨 /reload 或跨本地会话）→ 重新 attach，无需重建
-		if (getRuntime()) {
-			getRuntime()?.view.attach();
+		const existing = getRuntime();
+		if (existing) {
+			// reload 后旧 ctx 失效：用新 ctx 重建视图（router 的 onEvent 委托自动指向新 view）
+			// 兼容旧契约 runtime（reload 前创建、无 viewHolder 字段）：视图不可用但网关继续
+			if (existing.viewHolder) {
+				existing.viewHolder.current = new TerminalView({
+					setWidget: (id, lines) => ctx.ui?.setWidget?.(id, lines),
+				});
+				existing.viewHolder.current.attach();
+			}
 			ctx.ui.notify("QQ 网关保持运行（进程级宿主已挂载）", "info");
 			return;
 		}
@@ -575,14 +611,14 @@ export default function piQQBridge(pi: ExtensionAPI): void {
 		const rt = createBridge(cfg, ctx);
 		rt.lock = acquired.lock;
 		setRuntime(rt);
-		rt.view.attach();
+		rt.viewHolder.current.attach();
 		void rt.gateway.start();
 	});
 
 	pi.on("session_shutdown", async () => {
 		const cfg = loadConfigOnce();
 		const rt = getRuntime();
-		rt?.view.detach();
+		rt?.viewHolder.current.detach();
 		// keepAcrossLocalSessions=false 或未启用进程级保持 → 停止网关
 		if (rt && cfg && !cfg.startup.keepAcrossLocalSessions) {
 			await rt.gateway.stop();
