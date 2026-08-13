@@ -138,9 +138,10 @@ nano ~/.pi/agent/pi-qq-bridge.json
 **发消息没反应？**
 
 1. 确认网关状态：`/qqbot-status` 应显示 connected
-2. 确认测试 QQ 在开放平台**沙箱白名单**内
+2. 确认测试 QQ 在开放平台**沙箱白名单**内（群聊还要求该群已加入沙箱配置）
 3. 确认你的 openid 已授权：`/qqbot-requests` 查看申请，`/qqbot-approve <码> user` 批准
-4. 群聊需要把群 openid 加入 `allowGroups`
+4. 群聊需要把群 openid 加入 `allowGroups`：未授权群 @ 机器人会收到一条含本群 openid 的拒绝提示，复制填入配置即可
+5. 沙箱环境的群聊**不支持 Markdown 被动回复**，扩展会自动降级为纯文本发送（无需配置）；若仍未收到任何回复，开启 `debug: true` 后查看 `/tmp/pi-qq-bridge-gw.log` 中的 `sendFormatted` 日志
 
 **显示"未连接服务"？**
 
@@ -182,6 +183,14 @@ npm run typecheck
 ```
 
 分层结构：`core/`（基础）· `gateway/`（连接）· `session/`（会话）· `media/`（多媒体）· `commands/`（命令）· 根（入口与编排）。
+
+## 致谢
+
+本项目在设计与实现过程中参考了以下开源项目（协议处理、架构思路与安全设计深受启发），代码为独立实现：
+
+- [pi-agent-qqbot](https://github.com/gtiders/pi-agent-qqbot)（Apache-2.0）— 原生会话绑定方案、被动回复预算（ReplyBudget）、网关所有权转移
+- [@xsqm/pi-qqbot](https://github.com/XiaoSQM/pi-coding-agent-qqbot)（Apache-2.0）— 隔离 AgentSession 架构（本项目骨架来源）、附件安全下载管线、语义分块回复格式
+- [pi-qq-integration](https://github.com/Star-233/pi-qq-integration)（MIT）— 轻量 WebSocket 客户端与 Access Token 管理参考
 
 ## 许可证
 

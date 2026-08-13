@@ -34,7 +34,14 @@ export interface SentMessage {
 	keyboard?: unknown;
 }
 
-export function makeApi(sent: SentMessage[], failWith?: Error): QQApi {
+/**
+ * failWith 对所有发送抛错；markdownFailWith 仅 sendMarkdown 抛错（模拟平台拒绝 markdown）
+ */
+export function makeApi(
+	sent: SentMessage[],
+	failWith?: Error,
+	markdownFailWith?: Error,
+): QQApi {
 	const push = (
 		target: QQReplyTarget,
 		content: string,
@@ -59,6 +66,7 @@ export function makeApi(sent: SentMessage[], failWith?: Error): QQApi {
 			msgSeq: number,
 			keyboard?: unknown,
 		): Promise<void> {
+			if (markdownFailWith) throw markdownFailWith;
 			push(target, content, msgSeq, keyboard);
 		},
 	} as unknown as QQApi;

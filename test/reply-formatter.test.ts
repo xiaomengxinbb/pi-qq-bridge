@@ -88,6 +88,12 @@ test("markdownToPlain：标题/粗体/代码/引用/链接/列表降级", () => 
 	assert.match(plain, /• 项1/, "列表转圆点");
 });
 
+test("markdownToPlain：代码段内下划线不被强调正则误伤（openid 等标识符）", () => {
+	const plain = markdownToPlain("请管理员将群 openid \`group_openid_x\` 加入 allowGroups");
+	assert.ok(plain.includes("group_openid_x"), "代码段内容应原样保留");
+	assert.ok(!plain.includes("`"), "反引号剥离");
+});
+
 test("chunkMarkdown：超长单行硬切受块数限制且内容不丢", () => {
 	const text = "A".repeat(5000);
 	const chunks = chunkMarkdown(text, 1000, 4);

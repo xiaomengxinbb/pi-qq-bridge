@@ -64,6 +64,38 @@ test("未授权私聊（accessRequests 开）：生成申请码并回复，不�
 	assert.equal(requests.size, 1, "每用户唯一申请");
 });
 
+test("markdown 被平台拒绝（错误信息不含关键字）→ 降级纯文本回复，不静默丢失", async () => {
+	const sent: SentMessage[] = [];
+	const router = new QQRouter(
+		makeTestConfig({ replyFormat: "auto" }),
+		new FakeRegistry({ text: "回答内容" }),
+		makeApi(sent, undefined, new Error("HTTP 400 Bad Request")),
+	);
+	router.handleInbound(msg());
+	await new Promise((r) => setTimeout(r, 50));
+	assert.equal(sent.length, 1);
+	assert.equal(sent[0]?.content, "回答内容");
+	assert.equal(sent[0]?.msgSeq, 1);
+});
+
+test("markdown 被拒降级：多分块后续块以纯文本发送且 msg_seq 连续", async () => {
+	const sent: SentMessage[] = [];
+	const longText = Array.from({ length: 120 }, (_, i) => `段落 ${i}：` + "内容".repeat(30)).join("\n\n");
+	const router = new QQRouter(
+		makeTestConfig({ replyFormat: "auto" }),
+		new FakeRegistry({ text: longText }),
+		makeApi(sent, undefined, new Error("HTTP 400 Bad Request")),
+	);
+	router.handleInbound(msg());
+	await new Promise((r) => setTimeout(r, 50));
+	assert.ok(sent.length > 1, "长回复应分块发送");
+	assert.deepEqual(
+		sent.map((m) => m.msgSeq),
+		Array.from({ length: sent.length }, (_, i) => i + 1),
+		"msg_seq 必须从 1 连续递增（对齐预算）",
+	);
+});
+
 test("msg_id 去重：重复推送只处理一次", async () => {
 	const sent: SentMessage[] = [];
 	let prompts = 0;

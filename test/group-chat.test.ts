@@ -15,7 +15,7 @@ import { QQAuth } from "../src/gateway/qq-auth.ts";
 import { QQGateway } from "../src/gateway/qq-gateway.ts";
 import { QQApi } from "../src/gateway/qq-api.ts";
 import { QQRouter } from "../src/router.ts";
-import { makeTestConfig, FakeRegistry } from "./helpers.ts";
+import { makeTestConfig, makeApi, FakeRegistry, type SentMessage } from "./helpers.ts";
 import type { QQInboundMessage } from "../src/core/types.ts";
 
 test("网关：GROUP_AT_MESSAGE_CREATE → QQInboundMessage(type=group, groupOpenId)", async () => {
@@ -92,6 +92,52 @@ test("router：allowGroups 授权的群消息 → 群会话 → 群回复路径"
 	} finally {
 		await mock.close();
 	}
+});
+
+/** 群消息构造（router 单测用，不经 mock WS） */
+function groupMsg(overrides: Partial<QQInboundMessage> = {}): QQInboundMessage {
+	return {
+		id: `g_${Math.random().toString(36).slice(2, 10)}`,
+		type: "group",
+		text: "@机器人 看下这个",
+		userOpenId: "group_user_1",
+		groupOpenId: "group_openid_1",
+		attachments: [],
+		receivedAt: Date.now(),
+		...overrides,
+	};
+}
+
+test("router：授权群 + markdown 被拒（错误信息不含关键字）→ 降级纯文本回复（沙箱群聊场景）", async () => {
+	const sent: SentMessage[] = [];
+	const registry = new FakeRegistry({ text: "群回复内容" });
+	const router = new QQRouter(
+		makeTestConfig({ allowGroups: ["group_openid_1"], replyFormat: "auto" }),
+		registry,
+		makeApi(sent, undefined, new Error("HTTP 400 Bad Request")),
+	);
+	router.handleInbound(groupMsg());
+	await new Promise((r) => setTimeout(r, 50));
+	assert.equal(sent.length, 1, "markdown 被拒必须降级为纯文本回复，不能静默丢弃");
+	assert.equal(sent[0]?.target.type, "group");
+	assert.match(sent[0]?.content ?? "", /群回复内容/);
+});
+
+test("router：未授权群 + markdown 被拒 → 仍收到纯文本拒绝回复（含 group_openid 配置提示）", async () => {
+	const sent: SentMessage[] = [];
+	const registry = new FakeRegistry();
+	const router = new QQRouter(
+		makeTestConfig({ allowGroups: [], replyFormat: "auto" }),
+		registry,
+		makeApi(sent, undefined, new Error("HTTP 400 Bad Request")),
+	);
+	router.handleInbound(groupMsg({ id: "g_evil_md", groupOpenId: "group_openid_x" }));
+	await new Promise((r) => setTimeout(r, 50));
+	assert.equal(sent.length, 1, "拒绝回复不能因 markdown 被拒而丢失");
+	assert.match(sent[0]?.content ?? "", /没有权限/);
+	assert.match(sent[0]?.content ?? "", /group_openid_x/, "回复应附带群 openid 便于配置");
+	assert.match(sent[0]?.content ?? "", /allowGroups/);
+	assert.equal(registry.created.length, 0);
 });
 
 test("router：未授权群 → 拒绝回复（不产生访问申请）", async () => {

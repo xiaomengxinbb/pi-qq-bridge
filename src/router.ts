@@ -224,9 +224,14 @@ export class QQRouter {
 
 	private async replyDenied(msg: QQInboundMessage): Promise<void> {
 		try {
+			// 群场景附带 group_openid 提示：否则管理员无从得知该群 openid 以配置 allowGroups
+			const hint =
+				msg.type === "group" && msg.groupOpenId
+					? `\n\n本群尚未授权。若应允许该群使用，请管理员将群 openid \`${msg.groupOpenId}\` 加入配置 \`allowGroups\` 后重启网关。`
+					: "";
 			await this.replyToQQ(
 				msg,
-				"抱歉，你没有权限使用此机器人。如需访问请联系管理员。",
+				`抱歉，你没有权限使用此机器人。如需访问请联系管理员。${hint}`,
 			);
 		} catch {
 			// 拒绝回复失败无需再补救
@@ -998,6 +1003,13 @@ export class QQRouter {
 						seq,
 						index === 0 ? keyboard : undefined,
 					);
+					this.recordOutbound(msg, plain, seq);
+					this.emit({
+						kind: "reply",
+						messageId: msg.id,
+						msgSeq: seq,
+						content: plain,
+					});
 				} else {
 					try {
 						await this.api.sendMarkdown(
@@ -1006,42 +1018,55 @@ export class QQRouter {
 							seq,
 							index === 0 ? keyboard : undefined,
 						);
+						this.recordOutbound(msg, chunk, seq);
+						this.emit({
+							kind: "reply",
+							messageId: msg.id,
+							msgSeq: seq,
+							content: chunk,
+						});
 					} catch (err) {
-						if (fallbackToPlain && isMarkdownRejected(err)) {
-							// Markdown 被平台拒绝 → 本条与后续全部降级纯文本（msg_seq 对齐）
-							await this.api.sendText(
-								target,
-								plain,
-								seq,
-								index === 0 ? keyboard : undefined,
-							);
-							for (let rest = index + 1; rest < chunks.length; rest++) {
-								if (sharedBudget.isExhausted) break;
-								const restSeq = sharedBudget.nextSeq();
-								if (restSeq === undefined) break;
-								await this.api.sendText(
-									target,
-									plainChunks[rest] ?? chunks[rest]!,
-									restSeq,
-								);
-							}
-						} else {
-							throw err;
+						// Markdown 被平台拒绝（沙箱群聊等场景错误信息不固定，不能靠文本特征判断）
+						// → 本条与后续全部降级纯文本，保证 msg_seq 对齐；纯文本也失败才放弃
+						this.debugSend(
+							"sendFormatted",
+							`markdown 发送失败（${describeError(err)}），降级纯文本`,
+						);
+						if (!fallbackToPlain) throw err;
+						await this.api.sendText(
+							target,
+							plain,
+							seq,
+							index === 0 ? keyboard : undefined,
+						);
+						this.recordOutbound(msg, plain, seq);
+						this.emit({
+							kind: "reply",
+							messageId: msg.id,
+							msgSeq: seq,
+							content: plain,
+						});
+						for (let rest = index + 1; rest < chunks.length; rest++) {
+							if (sharedBudget.isExhausted) break;
+							const restSeq = sharedBudget.nextSeq();
+							if (restSeq === undefined) break;
+							const restPlain = plainChunks[rest] ?? chunks[rest]!;
+							await this.api.sendText(target, restPlain, restSeq);
+							this.recordOutbound(msg, restPlain, restSeq);
+							this.emit({
+								kind: "reply",
+								messageId: msg.id,
+								msgSeq: restSeq,
+								content: restPlain,
+							});
 						}
 						break;
 					}
 				}
-				this.recordOutbound(msg, chunk, seq);
-				this.emit({
-					kind: "reply",
-					messageId: msg.id,
-					msgSeq: seq,
-					content: chunk,
-				});
 			} catch (err) {
-				// 回复失败不抛出（避免队列卡死）；命令场景由调用方处理
-				if (!(err instanceof Error && /Markdown|markdown/i.test(err.message)))
-					break;
+				// 发送失败不抛出（避免队列卡死）；失败原因进调试日志便于诊断
+				this.debugSend("sendFormatted", `发送失败：${describeError(err)}`);
+				break;
 			}
 		}
 	}
@@ -1078,10 +1103,8 @@ export class QQRouter {
 	}
 }
 
-function isMarkdownRejected(err: unknown): boolean {
-	// QQ 平台拒绝 Markdown：msg_type=2 被拒时返回错误（平台无统一 code，按文本特征判断）
-	const message = err instanceof Error ? err.message : String(err);
-	return /markdown|格式|format|msg_type/i.test(message);
+function describeError(err: unknown): string {
+	return err instanceof Error ? err.message : String(err);
 }
 
 // ── 模块级辅助 ────────────────────────────────────────────────────

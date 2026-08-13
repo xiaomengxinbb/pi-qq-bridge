@@ -141,8 +141,15 @@ export function chunkPlainText(
 }
 
 export function markdownToPlain(markdown: string): string {
+	// 代码段先占位保护：避免其中内容被强调类正则误伤（如 openid 里的下划线被当斜体剥掉）
+	const codeSpans: string[] = [];
+	const PROTECTED = "\uE000CODE";
+	const protectedText = markdown.replace(/`([^`\n]+)`/g, (_match, code: string) => {
+		codeSpans.push(code);
+		return `${PROTECTED}${codeSpans.length - 1}\uE000`;
+	});
 	return normalizeMarkdown(
-		markdown
+		protectedText
 			.replace(/^```[^\n]*\n?/gm, "")
 			.replace(/^```\s*$/gm, "")
 			.replace(/^#{1,6}\s+/gm, "")
@@ -156,9 +163,10 @@ export function markdownToPlain(markdown: string): string {
 			.replace(/~~([^~]+)~~/g, "$1")
 			.replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g, "$1")
 			.replace(/(?<!_)_([^_\n]+)_(?!_)/g, "$1")
-			.replace(/`([^`\n]+)`/g, "$1")
 			.replace(/^\s*[*+-]\s+/gm, "• ")
 			.replace(/^\s*\*{3,}\s*$/gm, "────────"),
+	).replace(RegExp(`\\uE000CODE(\\d+)\\uE000`, "g"), (_match, index: string) =>
+		codeSpans[Number(index)] ?? "",
 	);
 }
 
